@@ -145,3 +145,85 @@ The first stage reads 52M values, while the second stage reads only 6400 values.
 ```text
 I optimized vector sum reduction by splitting the input into blocks, computing partial sums in Triton, sweeping block size, and then replacing the PyTorch second-stage sum with a Triton final reduction. The workload is mainly memory-bandwidth-bound because each float32 element only needs one read and one addition, so the key was maximizing effective bandwidth while preserving correctness.
 ```
+
+## Review Notes - 2026-05-26
+
+### Reduction
+
+Reduction means combining many values into fewer values, often one scalar.
+
+Examples:
+
+```text
+sum(x): x[N] -> scalar
+max(x): x[N] -> scalar
+```
+
+An elementwise operation is different:
+
+```text
+x + 1: x[N] -> y[N]
+```
+
+The output shape stays aligned with the input, so it is not usually called a reduction.
+
+### Why Vector Sum Is Bandwidth-Bound
+
+For each `float32` element:
+
+```text
+read 4 bytes
+do a small amount of addition
+```
+
+The arithmetic is cheap. The expensive part is reading the full tensor from GPU memory, so performance is best understood through effective memory bandwidth.
+
+### Why Partial Sums Matter
+
+A Triton program reduces one chunk of the input:
+
+```text
+x chunk -> one partial sum
+```
+
+Many programs run in parallel, producing many partial sums. This gives the GPU enough independent work to use memory bandwidth effectively.
+
+### Why Sweep BLOCK_SIZE
+
+`BLOCK_SIZE` controls how much input each Triton program handles.
+
+Larger `BLOCK_SIZE`:
+
+- fewer programs,
+- fewer partial sums,
+- cheaper final reduction,
+- but possibly less parallelism.
+
+Smaller `BLOCK_SIZE`:
+
+- more programs,
+- more parallelism,
+- more partial sums,
+- more second-stage work.
+
+The best value is hardware- and shape-dependent, so it should be measured.
+
+### Why Two-Stage Triton Only Helps A Little
+
+The first stage reads all `N` input values. The second stage reads only the partial sums.
+
+For the largest benchmark:
+
+```text
+N = 52,428,800
+BLOCK_SIZE = 8192
+num_blocks = 6400
+```
+
+The first stage reads tens of millions of values, while the second stage reads only thousands. Therefore replacing `torch.sum(partial)` with a Triton final reduction removes some overhead, but it does not change the main bottleneck.
+
+### Stronger Interview Version
+
+```text
+I optimized vector sum reduction by splitting the input into blocks, computing partial sums in parallel, and sweeping BLOCK_SIZE for the target GPU. The final two-stage Triton version replaces the PyTorch second-stage sum with a Triton kernel. The speedup over torch.sum is small because torch.sum is already highly optimized, and the main bottleneck is reading the full input tensor from memory, not reducing the much smaller partial-sum array.
+```
