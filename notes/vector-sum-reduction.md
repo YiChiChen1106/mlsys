@@ -227,3 +227,21 @@ The first stage reads tens of millions of values, while the second stage reads o
 ```text
 I optimized vector sum reduction by splitting the input into blocks, computing partial sums in parallel, and sweeping BLOCK_SIZE for the target GPU. The final two-stage Triton version replaces the PyTorch second-stage sum with a Triton kernel. The speedup over torch.sum is small because torch.sum is already highly optimized, and the main bottleneck is reading the full input tensor from memory, not reducing the much smaller partial-sum array.
 ```
+
+## Competition Feedback Loop
+
+For GPU MODE `vectorsum_v2`, the local RTX 4090 benchmark is useful for correctness and sanity checks, but A100 ranking must come from the official Popcorn runner.
+
+Workflow:
+
+```text
+write single-file submission.py
+-> verify correctness locally
+-> sanity benchmark locally
+-> submit mode=test on A100
+-> submit mode=benchmark on A100
+-> submit mode=leaderboard on A100
+-> use leaderboard result to choose the next optimization
+```
+
+The first submission should optimize for getting a correct baseline onto the board. After that, the next round should be driven by measured A100 results rather than only local 4090 timing.
