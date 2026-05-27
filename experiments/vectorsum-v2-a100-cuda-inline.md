@@ -247,3 +247,53 @@ CUDA atomic did not beat the current 137.626 us Triton leaderboard baseline.
 ```
 
 The best mean in this batch was `148 us`, and the best sample was `138 us`. That is close enough to show the direction is viable, but not stable enough to submit to leaderboard.
+
+## CUDA Persistent v1
+
+Files:
+
+```text
+projects/gpu-mode-vectorsum-v2/submission_cuda_persistent.py
+projects/gpu-mode-vectorsum-v2/sweep_a100_cuda_persistent_config.py
+```
+
+The persistent version keeps `THREADS=256`, `ITEMS_PER_THREAD=32`, and fixes the grid size via `GRID_BLOCKS`. Each block uses a grid-stride loop:
+
+```text
+block_start = blockIdx.x * ELEMENTS_PER_CHUNK
+block_start += gridDim.x * ELEMENTS_PER_CHUNK
+```
+
+This means one block can process multiple chunks before writing its partial.
+
+Local tests:
+
+```text
+python -m pytest test_submission_cuda_persistent.py test_sweep_a100_cuda_persistent_config.py ...
+28 passed
+```
+
+RTX 4090 correctness:
+
+```text
+base submission and all four generated variants passed sizes 1023, 1024, 1025, 2048, 4096
+```
+
+Partial A100 benchmark result:
+
+| Candidate | GRID_BLOCKS | mean | best | worst |
+| --- | ---: | ---: | ---: | ---: |
+| `g256` | 256 | 157 us | 152 us | 165 us |
+| `g512` | 512 | 145 us | 139 us | 148 us |
+
+`g1024` and `g2048` are pending because Popcorn hit the hourly submission limit after two runs:
+
+```text
+Rate limit exceeded: 6/6 test submissions per hour. Try again in 1364s.
+```
+
+Takeaway:
+
+```text
+GRID_BLOCKS=512 is already competitive with the accepted CUDA inline baseline, but it still does not beat the Triton 137.626 us score.
+```

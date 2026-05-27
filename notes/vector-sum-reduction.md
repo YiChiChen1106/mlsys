@@ -469,3 +469,32 @@ t256_i128: 153 us mean, 142 us best
 ```
 
 This did not beat the current `137.626 us` leaderboard baseline. The best sample, `138 us`, shows atomic can get close, but the mean is too slow for a safe leaderboard submission.
+
+### Persistent / Grid-Stride Two-Stage
+
+This version fixes the number of blocks and lets each block loop over multiple chunks:
+
+```text
+GRID_BLOCKS = 256/512/1024/2048
+each block processes multiple ELEMENTS_PER_CHUNK windows
+partial count = min(GRID_BLOCKS, ceil(N / ELEMENTS_PER_CHUNK))
+```
+
+The key code shape is:
+
+```text
+for (block_start = blockIdx.x * ELEMENTS_PER_CHUNK;
+     block_start < n_elements;
+     block_start += gridDim.x * ELEMENTS_PER_CHUNK)
+```
+
+This reduces partial count without using atomic contention.
+
+Initial A100 result:
+
+```text
+g256: 157 us mean, 152 us best
+g512: 145 us mean, 139 us best
+```
+
+`g512` is already competitive with the accepted CUDA inline baseline, but not yet better than the Triton leaderboard score.

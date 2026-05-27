@@ -244,3 +244,23 @@ A100 benchmark result:
 | `t256_i128` | 153 us | 142 us | 159 us |
 
 No CUDA atomic candidate beat the current `137.626 us` leaderboard baseline.
+
+## CUDA Persistent Experiment
+
+`submission_cuda_persistent.py` uses a fixed `GRID_BLOCKS` count with a grid-stride loop inside each block:
+
+```text
+each block processes multiple ELEMENTS_PER_CHUNK windows
+partial count = min(GRID_BLOCKS, ceil(N / ELEMENTS_PER_CHUNK))
+```
+
+RTX 4090 correctness passed for the base file and all four generated variants.
+
+Partial A100 benchmark result:
+
+| Candidate | GRID_BLOCKS | mean | best | worst |
+| --- | ---: | ---: | ---: | ---: |
+| `g256` | 256 | 157 us | 152 us | 165 us |
+| `g512` | 512 | 145 us | 139 us | 148 us |
+
+`g1024` and `g2048` were blocked by the Popcorn hourly submission limit and are still pending.
