@@ -280,3 +280,48 @@ Result:
 ```
 
 `BLOCK_SIZE=8192` remained the best candidate. The next tuning lever should be `num_warps` or a different reduction strategy, not a wider coarse block-size sweep.
+
+### num_warps Sweep
+
+In Triton, `num_warps` controls how many warps cooperate inside one program instance.
+
+For vector sum, the first experiment keeps:
+
+```text
+BLOCK_SIZE = 8192
+FINAL_BLOCK_SIZE = 8192
+```
+
+and changes:
+
+```text
+partial kernel num_warps = 4, 8, 16
+final kernel num_warps = 8
+```
+
+This isolates the main read-heavy stage. The final stage reads only the partial sums, so it is less likely to dominate the total time.
+
+### Atomic-Add Version
+
+The atomic-add version changes the second stage:
+
+```text
+two-stage:
+x[N] -> partial[num_blocks] -> output[0]
+
+atomic:
+zero output[0]
+x[N] chunks -> atomic_add(output[0], partial)
+```
+
+Potential benefit:
+
+- no partial buffer allocation or reuse logic,
+- no final reduction over partial sums.
+
+Potential cost:
+
+- many programs contend on the same scalar output address,
+- floating-point atomic order is nondeterministic.
+
+So atomic-add is an experiment, not automatically an improvement. It must be judged by the official A100 benchmark.

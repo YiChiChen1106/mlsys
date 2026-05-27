@@ -9,7 +9,10 @@ Submit a correct first A100 entry, then iterate from real leaderboard feedback.
 ## Files
 
 - `submission.py`: Popcorn-compatible Triton two-stage reduction.
+- `submission_atomic.py`: Atomic-add comparison kernel.
 - `validate_submission.py`: Local correctness and sanity benchmark script.
+- `sweep_a100_block_size.py`: Generate and benchmark `BLOCK_SIZE` variants.
+- `sweep_a100_num_warps.py`: Generate and benchmark `num_warps` variants.
 
 ## Local 4090 Validation
 
@@ -85,3 +88,41 @@ First sweep result:
 | 32768 | 147 us | 140 us | 174 us |
 
 `BLOCK_SIZE=8192` remains the best coarse candidate.
+
+## A100 num_warps Sweep
+
+Generate first-round variants:
+
+```bash
+python sweep_a100_num_warps.py \
+  --partial-warps 4,8,16 \
+  --final-warps 8 \
+  --output-dir outputs/num-warps-sweep-first
+```
+
+Run A100 benchmark mode:
+
+```bash
+python sweep_a100_num_warps.py \
+  --partial-warps 4,8,16 \
+  --final-warps 8 \
+  --output-dir outputs/num-warps-sweep-first \
+  --run
+```
+
+The first attempt hit Popcorn rate limiting:
+
+```text
+Rate limit exceeded: 6/6 test submissions per hour.
+```
+
+## Atomic-Add Comparison
+
+`submission_atomic.py` uses two launches:
+
+```text
+zero output[0]
+each Triton program reduces one chunk and atomic_adds its partial sum into output[0]
+```
+
+This removes the partial buffer and final reduction kernel, but introduces contention on one global memory address.
