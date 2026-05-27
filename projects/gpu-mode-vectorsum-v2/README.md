@@ -234,8 +234,13 @@ First candidate set:
 
 RTX 4090 correctness passed for the base file and all four generated variants.
 
-A100 benchmark is pending because Popcorn returned:
+A100 benchmark result:
 
-```text
-Rate limit exceeded: 6/6 test submissions per hour. Try again in 899s.
-```
+| Candidate | mean | best | worst |
+| --- | ---: | ---: | ---: |
+| `t256_i32` | 148 us | 141 us | 154 us |
+| `t256_i64` | 150 us | 138 us | 158 us |
+| `t512_i32` | 149 us | 144 us | 154 us |
+| `t256_i128` | 153 us | 142 us | 159 us |
+
+No CUDA atomic candidate beat the current `137.626 us` leaderboard baseline.

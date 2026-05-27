@@ -231,11 +231,19 @@ RTX 4090 correctness:
 base submission and all four generated variants passed sizes 1023, 1024, 1025, 2048, 4096
 ```
 
-A100 status:
+A100 benchmark mode:
+
+| Candidate | mean | best | worst |
+| --- | ---: | ---: | ---: |
+| `t256_i32` | 148 us | 141 us | 154 us |
+| `t256_i64` | 150 us | 138 us | 158 us |
+| `t512_i32` | 149 us | 144 us | 154 us |
+| `t256_i128` | 153 us | 142 us | 159 us |
+
+Conclusion:
 
 ```text
-pending
-Rate limit exceeded: 6/6 test submissions per hour. Try again in 899s.
+CUDA atomic did not beat the current 137.626 us Triton leaderboard baseline.
 ```
 
-Next step is to run the A100 benchmark after the Popcorn quota resets.
+The best mean in this batch was `148 us`, and the best sample was `138 us`. That is close enough to show the direction is viable, but not stable enough to submit to leaderboard.

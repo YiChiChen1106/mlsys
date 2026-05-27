@@ -457,4 +457,15 @@ t512_i32: 16384 elements/block, about 3200 atomic adds
 t256_i128: 32768 elements/block, about 1600 atomic adds
 ```
 
-RTX 4090 correctness passed for all variants. A100 benchmark is pending because the Popcorn quota was exhausted.
+RTX 4090 correctness passed for all variants.
+
+A100 benchmark-mode result:
+
+```text
+t256_i32: 148 us mean, 141 us best
+t256_i64: 150 us mean, 138 us best
+t512_i32: 149 us mean, 144 us best
+t256_i128: 153 us mean, 142 us best
+```
+
+This did not beat the current `137.626 us` leaderboard baseline. The best sample, `138 us`, shows atomic can get close, but the mean is too slow for a safe leaderboard submission.
