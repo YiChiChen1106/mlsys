@@ -66,20 +66,52 @@ benchmark size=52428800 0.2843 ms 737.74 GB/s
 
 ## A100 Results
 
-Status:
+Official test:
 
 ```text
-Blocked on Popcorn CLI GitHub authorization.
+Passed 5/5 tests on NVIDIA A100 80GB PCIe.
 ```
 
-Next commands after authorization:
+Benchmark mode:
 
-```bash
-popcorn-cli submit --no-tui --leaderboard vectorsum_v2 --gpu A100 --mode test submission.py
-popcorn-cli submit --no-tui --leaderboard vectorsum_v2 --gpu A100 --mode benchmark --output benchmark-a100.json submission.py
-popcorn-cli submit --no-tui --leaderboard vectorsum_v2 --gpu A100 --mode leaderboard --output leaderboard-a100.json submission.py
+```text
+seed: 12345; size: 52428800
+141 +/- 0.1 us
+best: 140 us
+worst: 142 us
+```
+
+Leaderboard mode:
+
+```text
+seed: 12345; size: 52428800
+ranked benchmark: 138 +/- 0.1 us
+best: 136 us
+worst: 138 us
+```
+
+Leaderboard API:
+
+```text
+rank: 3
+user: YiChiChen
+submission_id: 783079
+score: 0.00013762559816241264 s
+score_us: 137.626 us
 ```
 
 ## Next Step
 
-Complete GitHub OAuth for the current Popcorn CLI `cli_id`, then submit to A100.
+The first submission already reached A100 rank 3. The next optimization target is the remaining gap to rank 1:
+
+```text
+rank 1: 135.339 us
+current: 137.626 us
+gap: about 2.29 us
+```
+
+Next candidates:
+
+- tune `BLOCK_SIZE` and `FINAL_BLOCK_SIZE` specifically for A100,
+- compare cached two-stage Triton against an atomic-add version,
+- consider CUDA inline if Triton tuning plateaus.

@@ -245,3 +245,19 @@ write single-file submission.py
 ```
 
 The first submission should optimize for getting a correct baseline onto the board. After that, the next round should be driven by measured A100 results rather than only local 4090 timing.
+
+### First A100 Result
+
+The first Popcorn CLI submission used the cached two-stage Triton implementation.
+
+Result on 2026-05-27:
+
+```text
+leaderboard: vectorsum_v2
+gpu: A100
+rank: 3
+submission_id: 783079
+score: 137.626 us
+```
+
+This confirms that the same conceptual structure from the local learning project can produce a competitive official submission. Further optimization should target the small remaining gap to the current rank 1 score of about `135.339 us`.

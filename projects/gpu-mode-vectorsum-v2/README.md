@@ -43,6 +43,16 @@ popcorn-cli submit --no-tui --leaderboard vectorsum_v2 --gpu A100 --mode benchma
 popcorn-cli submit --no-tui --leaderboard vectorsum_v2 --gpu A100 --mode leaderboard --output leaderboard-a100.json submission.py
 ```
 
+Observed A100 result:
+
+```text
+rank: 3
+submission_id: 783079
+score: 137.626 us
+ranked benchmark: 138 +/- 0.1 us
+best ranked sample: 136 us
+```
+
 If the CLI returns `401 Unauthorized`, run:
 
 ```bash
