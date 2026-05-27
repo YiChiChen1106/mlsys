@@ -60,3 +60,28 @@ popcorn-cli reregister github
 ```
 
 Then open the printed GitHub OAuth URL in a browser.
+
+## A100 BLOCK_SIZE Sweep
+
+Generate variants:
+
+```bash
+python sweep_a100_block_size.py
+```
+
+Run A100 benchmark mode for all variants:
+
+```bash
+python sweep_a100_block_size.py --run
+```
+
+First sweep result:
+
+| BLOCK_SIZE | mean | best | worst |
+| ---: | ---: | ---: | ---: |
+| 4096 | 145 us | 139 us | 148 us |
+| 8192 | 144 us | 137 us | 150 us |
+| 16384 | 147 us | 138 us | 153 us |
+| 32768 | 147 us | 140 us | 174 us |
+
+`BLOCK_SIZE=8192` remains the best coarse candidate.

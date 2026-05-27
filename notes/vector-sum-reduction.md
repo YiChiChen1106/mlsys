@@ -261,3 +261,22 @@ score: 137.626 us
 ```
 
 This confirms that the same conceptual structure from the local learning project can produce a competitive official submission. Further optimization should target the small remaining gap to the current rank 1 score of about `135.339 us`.
+
+### A100 BLOCK_SIZE Sweep
+
+The first coarse A100 sweep tested:
+
+```text
+4096, 8192, 16384, 32768
+```
+
+Result:
+
+```text
+4096: 145 us mean, 139 us best
+8192: 144 us mean, 137 us best
+16384: 147 us mean, 138 us best
+32768: 147 us mean, 140 us best
+```
+
+`BLOCK_SIZE=8192` remained the best candidate. The next tuning lever should be `num_warps` or a different reduction strategy, not a wider coarse block-size sweep.
