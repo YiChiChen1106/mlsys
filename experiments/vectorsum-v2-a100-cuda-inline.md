@@ -147,3 +147,47 @@ Continue CUDA inline optimization from v2, not v1:
 - compare two-stage vs accepted-template atomic,
 - reduce overhead in the final stage,
 - consider vectorized loads if the official runner accepts the code shape.
+
+## CUDA Inline Config Sweep
+
+Script:
+
+```text
+projects/gpu-mode-vectorsum-v2/sweep_a100_cuda_inline_config.py
+```
+
+Generated candidates:
+
+| Candidate | THREADS | ITEMS_PER_THREAD | elements/block |
+| --- | ---: | ---: | ---: |
+| `t128_i32` | 128 | 32 | 4096 |
+| `t128_i64` | 128 | 64 | 8192 |
+| `t256_i64` | 256 | 64 | 16384 |
+| `t512_i16` | 512 | 16 | 8192 |
+| `t512_i32` | 512 | 32 | 16384 |
+
+RTX 4090 correctness:
+
+```text
+all five generated variants passed sizes 1023, 1024, 1025, 2048, 4096
+```
+
+A100 benchmark mode:
+
+| Candidate | mean | best | worst |
+| --- | ---: | ---: | ---: |
+| `t128_i32` | 154 us | 144 us | 162 us |
+| `t128_i64` | 154 us | 145 us | 161 us |
+| `t256_i64` | 152 us | 144 us | 159 us |
+| `t512_i16` | 156 us | 152 us | 164 us |
+| `t512_i32` | 152 us | 143 us | 157 us |
+
+The runner reported `NVIDIA A100 80GB PCIe` for this sweep. Earlier `submission_cuda_inline_v2.py` benchmark output reported `NVIDIA A100-SXM4-80GB`, so absolute comparison to the earlier `147 us` result is imperfect.
+
+Conclusion:
+
+```text
+No tested THREADS x ITEMS_PER_THREAD variant is leaderboard-worthy.
+```
+
+The next CUDA step should change the reduction strategy rather than only changing per-block shape. Also include `256x32` in the same future batch as a same-run baseline.

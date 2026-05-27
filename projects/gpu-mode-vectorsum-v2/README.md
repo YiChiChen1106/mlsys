@@ -15,6 +15,7 @@ Submit a correct first A100 entry, then iterate from real leaderboard feedback.
 - `validate_submission.py`: Local correctness and sanity benchmark script.
 - `sweep_a100_block_size.py`: Generate and benchmark `BLOCK_SIZE` variants.
 - `sweep_a100_num_warps.py`: Generate and benchmark `num_warps` variants.
+- `sweep_a100_cuda_inline_config.py`: Generate and benchmark CUDA inline `THREADS x ITEMS_PER_THREAD` variants.
 
 ## Local 4090 Validation
 
@@ -180,3 +181,31 @@ This version passed Popcorn A100 benchmark mode:
 | `cuda_inline_v2` | 147 us | 139 us | 154 us |
 
 It is not leaderboard-worthy yet, but it establishes an accepted CUDA inline starting point.
+
+### CUDA Inline Config Sweep
+
+Generate first-round CUDA inline variants:
+
+```bash
+python sweep_a100_cuda_inline_config.py --output-dir outputs/cuda-inline-config-sweep
+```
+
+Run A100 benchmark mode:
+
+```bash
+python sweep_a100_cuda_inline_config.py \
+  --output-dir outputs/cuda-inline-config-sweep \
+  --run
+```
+
+First sweep result:
+
+| Candidate | elements/block | mean | best | worst |
+| --- | ---: | ---: | ---: | ---: |
+| `t128_i32` | 4096 | 154 us | 144 us | 162 us |
+| `t128_i64` | 8192 | 154 us | 145 us | 161 us |
+| `t256_i64` | 16384 | 152 us | 144 us | 159 us |
+| `t512_i16` | 8192 | 156 us | 152 us | 164 us |
+| `t512_i32` | 16384 | 152 us | 143 us | 157 us |
+
+The runner reported `NVIDIA A100 80GB PCIe` for this sweep, while earlier CUDA inline v2 ran on `A100-SXM4-80GB`, so future sweeps should include the baseline config in the same batch for cleaner relative comparison.

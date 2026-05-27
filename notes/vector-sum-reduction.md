@@ -401,3 +401,24 @@ cuda_inline_v2: 147 us mean, 139 us best
 ```
 
 This is slower than the Triton score, but it proves CUDA inline can be used if written in the runner-friendly template shape.
+
+The first CUDA config sweep tested:
+
+```text
+THREADS x ITEMS_PER_THREAD
+128x32, 128x64, 256x64, 512x16, 512x32
+```
+
+A100 benchmark-mode result:
+
+```text
+t128_i32: 154 us mean
+t128_i64: 154 us mean
+t256_i64: 152 us mean
+t512_i16: 156 us mean
+t512_i32: 152 us mean
+```
+
+This did not improve the accepted CUDA inline baseline. It suggests the next step should change the reduction strategy, not just the block shape.
+
+One measurement caution: the runner reported different A100 labels across runs (`A100-SXM4-80GB` vs `A100 80GB PCIe`), so clean sweeps should include a same-batch baseline candidate.
