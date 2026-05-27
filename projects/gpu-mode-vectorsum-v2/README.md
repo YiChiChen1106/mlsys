@@ -256,11 +256,13 @@ partial count = min(GRID_BLOCKS, ceil(N / ELEMENTS_PER_CHUNK))
 
 RTX 4090 correctness passed for the base file and all four generated variants.
 
-Partial A100 benchmark result:
+A100 benchmark result:
 
 | Candidate | GRID_BLOCKS | mean | best | worst |
 | --- | ---: | ---: | ---: | ---: |
 | `g256` | 256 | 157 us | 152 us | 165 us |
 | `g512` | 512 | 145 us | 139 us | 148 us |
+| `g1024` | 1024 | 157 us | 150 us | 164 us |
+| `g2048` | 2048 | 153 us | 147 us | 159 us |
 
-`g1024` and `g2048` were blocked by the Popcorn hourly submission limit and are still pending.
+`g1024` initially hit a Modal timeout on the first attempt, but completed successfully when retried alone. No persistent candidate beat the current `137.626 us` leaderboard baseline.

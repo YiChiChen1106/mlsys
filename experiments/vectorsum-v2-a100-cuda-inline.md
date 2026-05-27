@@ -279,21 +279,19 @@ RTX 4090 correctness:
 base submission and all four generated variants passed sizes 1023, 1024, 1025, 2048, 4096
 ```
 
-Partial A100 benchmark result:
+A100 benchmark result:
 
 | Candidate | GRID_BLOCKS | mean | best | worst |
 | --- | ---: | ---: | ---: | ---: |
 | `g256` | 256 | 157 us | 152 us | 165 us |
 | `g512` | 512 | 145 us | 139 us | 148 us |
+| `g1024` | 1024 | 157 us | 150 us | 164 us |
+| `g2048` | 2048 | 153 us | 147 us | 159 us |
 
-`g1024` and `g2048` are pending because Popcorn hit the hourly submission limit after two runs:
-
-```text
-Rate limit exceeded: 6/6 test submissions per hour. Try again in 1364s.
-```
+`g1024` first hit a Modal 300s timeout, then completed successfully when retried alone.
 
 Takeaway:
 
 ```text
-GRID_BLOCKS=512 is already competitive with the accepted CUDA inline baseline, but it still does not beat the Triton 137.626 us score.
+GRID_BLOCKS=512 is the best persistent candidate in this sweep, but it still does not beat the Triton 137.626 us score.
 ```

@@ -495,6 +495,8 @@ Initial A100 result:
 ```text
 g256: 157 us mean, 152 us best
 g512: 145 us mean, 139 us best
+g1024: 157 us mean, 150 us best
+g2048: 153 us mean, 147 us best
 ```
 
-`g512` is already competitive with the accepted CUDA inline baseline, but not yet better than the Triton leaderboard score.
+`g512` is the best candidate in this persistent sweep and is competitive with the accepted CUDA inline baseline, but not yet better than the Triton leaderboard score.
