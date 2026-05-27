@@ -343,3 +343,45 @@ atomic: 144 us mean, 137 us best
 ```
 
 The atomic version was the best of this batch by mean time, but still not strong enough to justify a new leaderboard submission.
+
+### CUDA Inline Attempt
+
+CUDA inline means embedding CUDA C++ code inside the Python submission and compiling it with `torch.utils.cpp_extension.load_inline`.
+
+The first version used the same high-level two-stage structure:
+
+```text
+x[N] -> partial[num_blocks] -> output[0]
+```
+
+but implemented each block reduction manually:
+
+```text
+thread local sum
+-> __shfl_down_sync inside each warp
+-> shared memory for warp sums
+-> final warp reduction
+```
+
+Local result:
+
+```text
+RTX 4090 correctness: pass
+largest shape: 0.2846 ms, 736.95 GB/s
+```
+
+A100 Popcorn result:
+
+```text
+rejected: "Your code contains work on another stream"
+```
+
+Passing the Python current CUDA stream explicitly into the C++ launcher did not fix the Popcorn rejection.
+
+Lesson:
+
+```text
+Local CUDA correctness is necessary but not sufficient. The official runner may enforce stream rules that a custom C++ extension does not satisfy, even when the kernel is correct locally.
+```
+
+Until there is an accepted CUDA inline template for this leaderboard, Triton remains the safer submission path.
