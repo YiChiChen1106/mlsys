@@ -76,7 +76,7 @@ This is not better than the current Triton baseline, but it is close on the larg
 
 ## A100 Popcorn Result
 
-Popcorn benchmark mode rejected the CUDA inline version:
+Popcorn benchmark mode rejected v1:
 
 ```text
 Application error: Server returned status 500 Internal Server Error:
@@ -92,15 +92,58 @@ The CUDA inline kernel is locally correct, but this submission path is not accep
 The practical conclusion is:
 
 ```text
-CUDA inline via torch.utils.cpp_extension.load_inline is not a viable next submission path unless we find the exact stream contract expected by Popcorn or a known accepted CUDA inline template for this leaderboard.
+CUDA inline via a custom PYBIND11_MODULE wrapper is not a viable next submission path unless we find the exact stream contract expected by Popcorn.
 ```
 
-For now, continue optimization in Triton or use CUDA inline only as a learning exercise outside the official submission path.
+## CUDA Inline v2
+
+After checking the official `vectoradd_py` CUDA inline example, v2 was rewritten to match that template:
+
+```text
+load_inline(functions=[...])
+no custom PYBIND11_MODULE
+CUDA wrapper functions return tensors
+kernel launches use the simple <<<blocks, threads>>> template style
+```
+
+File:
+
+```text
+projects/gpu-mode-vectorsum-v2/submission_cuda_inline_v2.py
+```
+
+Local tests:
+
+```text
+python -m pytest test_submission_cuda_inline_v2.py test_submission_cuda_inline.py test_sweep_a100_block_size.py test_sweep_a100_num_warps.py test_submission_atomic.py
+13 passed
+```
+
+RTX 4090 correctness:
+
+```text
+correctness size=1023 pass
+correctness size=1024 pass
+correctness size=1025 pass
+correctness size=2048 pass
+correctness size=4096 pass
+```
+
+A100 Popcorn benchmark:
+
+```text
+147 ± 0.2 us
+best 139 us
+worst 154 us
+```
+
+This confirms that CUDA inline is a viable Popcorn submission path when written in the official template shape, but this first accepted CUDA baseline is slower than the current Triton leaderboard score of `137.626 us`.
 
 ## Next Step
 
-Return to Triton-focused optimization:
+Continue CUDA inline optimization from v2, not v1:
 
-- try vectorized/block-pair reduction patterns in Triton,
-- inspect public winning-style approaches if available,
-- avoid spending A100 submissions on `load_inline` until the stream issue is resolved.
+- sweep `THREADS` and `ITEMS_PER_THREAD`,
+- compare two-stage vs accepted-template atomic,
+- reduce overhead in the final stage,
+- consider vectorized loads if the official runner accepts the code shape.

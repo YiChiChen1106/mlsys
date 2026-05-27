@@ -11,6 +11,7 @@ Submit a correct first A100 entry, then iterate from real leaderboard feedback.
 - `submission.py`: Popcorn-compatible Triton two-stage reduction.
 - `submission_atomic.py`: Atomic-add comparison kernel.
 - `submission_cuda_inline.py`: CUDA inline two-stage reduction experiment.
+- `submission_cuda_inline_v2.py`: Official-template CUDA inline two-stage reduction experiment.
 - `validate_submission.py`: Local correctness and sanity benchmark script.
 - `sweep_a100_block_size.py`: Generate and benchmark `BLOCK_SIZE` variants.
 - `sweep_a100_num_warps.py`: Generate and benchmark `num_warps` variants.
@@ -163,3 +164,19 @@ Your code contains work on another stream.
 ```
 
 Passing `torch.cuda.current_stream(x.device).cuda_stream` explicitly into C++ did not resolve the rejection, so this path is currently recorded as a local learning baseline rather than a viable leaderboard submission.
+
+`submission_cuda_inline_v2.py` follows the official `vectoradd_py` inline-CUDA template more closely:
+
+```text
+load_inline(functions=[...])
+no custom PYBIND11_MODULE
+CUDA wrapper functions return tensors
+```
+
+This version passed Popcorn A100 benchmark mode:
+
+| Candidate | mean | best | worst |
+| --- | ---: | ---: | ---: |
+| `cuda_inline_v2` | 147 us | 139 us | 154 us |
+
+It is not leaderboard-worthy yet, but it establishes an accepted CUDA inline starting point.

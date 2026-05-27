@@ -385,3 +385,19 @@ Local CUDA correctness is necessary but not sufficient. The official runner may 
 ```
 
 Until there is an accepted CUDA inline template for this leaderboard, Triton remains the safer submission path.
+
+Update: an accepted CUDA inline template exists. The working pattern matches the official `vectoradd_py` example:
+
+```text
+load_inline(functions=[...])
+no custom PYBIND11_MODULE
+CUDA wrapper returns torch::Tensor
+```
+
+The resulting `submission_cuda_inline_v2.py` passed A100 benchmark mode:
+
+```text
+cuda_inline_v2: 147 us mean, 139 us best
+```
+
+This is slower than the Triton score, but it proves CUDA inline can be used if written in the runner-friendly template shape.
