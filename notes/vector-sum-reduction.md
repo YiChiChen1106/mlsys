@@ -301,6 +301,16 @@ final kernel num_warps = 8
 
 This isolates the main read-heavy stage. The final stage reads only the partial sums, so it is less likely to dominate the total time.
 
+First A100 benchmark-mode result:
+
+```text
+wp4_wf8: 146 us mean, 140 us best
+wp8_wf8: 145 us mean, 141 us best
+wp16_wf8: 145 us mean, 139 us best
+```
+
+This did not improve the current `137.626 us` leaderboard score.
+
 ### Atomic-Add Version
 
 The atomic-add version changes the second stage:
@@ -325,3 +335,11 @@ Potential cost:
 - floating-point atomic order is nondeterministic.
 
 So atomic-add is an experiment, not automatically an improvement. It must be judged by the official A100 benchmark.
+
+First A100 benchmark-mode result:
+
+```text
+atomic: 144 us mean, 137 us best
+```
+
+The atomic version was the best of this batch by mean time, but still not strong enough to justify a new leaderboard submission.

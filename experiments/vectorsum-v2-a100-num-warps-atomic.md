@@ -60,7 +60,16 @@ The first Popcorn A100 benchmark attempt hit the hourly submission limit:
 Rate limit exceeded: 6/6 test submissions per hour. Try again in 1703s.
 ```
 
-No new leaderboard submission has been made from these variants yet.
+After the limit reset, all candidates were benchmarked in Popcorn `mode=benchmark`:
+
+| Candidate | mean | best | worst |
+| --- | ---: | ---: | ---: |
+| `wp4_wf8` | 146 us | 140 us | 151 us |
+| `wp8_wf8` | 145 us | 141 us | 148 us |
+| `wp16_wf8` | 145 us | 139 us | 147 us |
+| `atomic` | 144 us | 137 us | 148 us |
+
+No new leaderboard submission was made. The atomic version had the best mean in this batch, but it did not clearly beat the existing `137.626 us` leaderboard score.
 
 ## Interpretation
 
@@ -68,9 +77,7 @@ No new leaderboard submission has been made from these variants yet.
 
 The atomic-add version is a useful comparison because it removes the cached partial buffer and final reduction. The tradeoff is that all programs update the same scalar output, so atomic contention may dominate on A100 even if the 4090 sanity benchmark looks competitive.
 
-## Next Step
-
-After the Popcorn limit resets:
+## Commands
 
 ```bash
 python sweep_a100_num_warps.py \
@@ -87,4 +94,8 @@ popcorn-cli submit --no-tui \
   submission_atomic.py
 ```
 
-Only submit to `mode=leaderboard` if a benchmark result clearly beats the current `137.626 us` baseline.
+## Conclusion
+
+The simple `num_warps` sweep did not improve the current two-stage baseline. The atomic-add version is competitive but still slower by mean time on A100.
+
+The next serious optimization should change the reduction strategy more deeply, for example CUDA inline with a more specialized reduction or a variant that reduces atomic contention.

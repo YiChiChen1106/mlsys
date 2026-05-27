@@ -110,11 +110,15 @@ python sweep_a100_num_warps.py \
   --run
 ```
 
-The first attempt hit Popcorn rate limiting:
+First A100 result:
 
-```text
-Rate limit exceeded: 6/6 test submissions per hour.
-```
+| Candidate | mean | best | worst |
+| --- | ---: | ---: | ---: |
+| `wp4_wf8` | 146 us | 140 us | 151 us |
+| `wp8_wf8` | 145 us | 141 us | 148 us |
+| `wp16_wf8` | 145 us | 139 us | 147 us |
+
+None of these beat the existing leaderboard baseline.
 
 ## Atomic-Add Comparison
 
@@ -126,3 +130,11 @@ each Triton program reduces one chunk and atomic_adds its partial sum into outpu
 ```
 
 This removes the partial buffer and final reduction kernel, but introduces contention on one global memory address.
+
+Observed A100 benchmark mode:
+
+| Candidate | mean | best | worst |
+| --- | ---: | ---: | ---: |
+| `atomic` | 144 us | 137 us | 148 us |
+
+This was competitive, but not a clear leaderboard improvement over the current `137.626 us` score.
