@@ -191,3 +191,51 @@ No tested THREADS x ITEMS_PER_THREAD variant is leaderboard-worthy.
 ```
 
 The next CUDA step should change the reduction strategy rather than only changing per-block shape. Also include `256x32` in the same future batch as a same-run baseline.
+
+## CUDA Atomic v1
+
+Files:
+
+```text
+projects/gpu-mode-vectorsum-v2/submission_cuda_atomic.py
+projects/gpu-mode-vectorsum-v2/sweep_a100_cuda_atomic_config.py
+```
+
+The atomic version follows the official `load_inline(functions=[...])` template:
+
+```text
+zero output[0]
+each CUDA block reduces one input chunk
+one atomicAdd(output, block_sum) per block
+```
+
+Candidate set:
+
+| Candidate | THREADS | ITEMS_PER_THREAD | elements/block | approximate atomic adds |
+| --- | ---: | ---: | ---: | ---: |
+| `t256_i32` | 256 | 32 | 8192 | 6400 |
+| `t256_i64` | 256 | 64 | 16384 | 3200 |
+| `t512_i32` | 512 | 32 | 16384 | 3200 |
+| `t256_i128` | 256 | 128 | 32768 | 1600 |
+
+Local tests:
+
+```text
+python -m pytest test_submission_cuda_atomic.py test_sweep_a100_cuda_atomic_config.py ...
+22 passed
+```
+
+RTX 4090 correctness:
+
+```text
+base submission and all four generated variants passed sizes 1023, 1024, 1025, 2048, 4096
+```
+
+A100 status:
+
+```text
+pending
+Rate limit exceeded: 6/6 test submissions per hour. Try again in 899s.
+```
+
+Next step is to run the A100 benchmark after the Popcorn quota resets.

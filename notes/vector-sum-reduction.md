@@ -422,3 +422,39 @@ t512_i32: 152 us mean
 This did not improve the accepted CUDA inline baseline. It suggests the next step should change the reduction strategy, not just the block shape.
 
 One measurement caution: the runner reported different A100 labels across runs (`A100-SXM4-80GB` vs `A100 80GB PCIe`), so clean sweeps should include a same-batch baseline candidate.
+
+### CUDA Atomic Direction
+
+The accepted-template CUDA atomic version changes the structure from:
+
+```text
+two-stage:
+x[N] -> partial[num_blocks] -> output[0]
+```
+
+to:
+
+```text
+atomic:
+zero output[0]
+each block computes block_sum
+atomicAdd(output[0], block_sum)
+```
+
+The tradeoff:
+
+```text
+less final-stage work
+more contention on one scalar address
+```
+
+First candidate set:
+
+```text
+t256_i32: 8192 elements/block, about 6400 atomic adds
+t256_i64: 16384 elements/block, about 3200 atomic adds
+t512_i32: 16384 elements/block, about 3200 atomic adds
+t256_i128: 32768 elements/block, about 1600 atomic adds
+```
+
+RTX 4090 correctness passed for all variants. A100 benchmark is pending because the Popcorn quota was exhausted.

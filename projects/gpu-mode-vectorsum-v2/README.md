@@ -12,10 +12,12 @@ Submit a correct first A100 entry, then iterate from real leaderboard feedback.
 - `submission_atomic.py`: Atomic-add comparison kernel.
 - `submission_cuda_inline.py`: CUDA inline two-stage reduction experiment.
 - `submission_cuda_inline_v2.py`: Official-template CUDA inline two-stage reduction experiment.
+- `submission_cuda_atomic.py`: Official-template CUDA atomic-add reduction experiment.
 - `validate_submission.py`: Local correctness and sanity benchmark script.
 - `sweep_a100_block_size.py`: Generate and benchmark `BLOCK_SIZE` variants.
 - `sweep_a100_num_warps.py`: Generate and benchmark `num_warps` variants.
 - `sweep_a100_cuda_inline_config.py`: Generate and benchmark CUDA inline `THREADS x ITEMS_PER_THREAD` variants.
+- `sweep_a100_cuda_atomic_config.py`: Generate and benchmark CUDA atomic `THREADS x ITEMS_PER_THREAD` variants.
 
 ## Local 4090 Validation
 
@@ -209,3 +211,31 @@ First sweep result:
 | `t512_i32` | 16384 | 152 us | 143 us | 157 us |
 
 The runner reported `NVIDIA A100 80GB PCIe` for this sweep, while earlier CUDA inline v2 ran on `A100-SXM4-80GB`, so future sweeps should include the baseline config in the same batch for cleaner relative comparison.
+
+## CUDA Atomic Experiment
+
+`submission_cuda_atomic.py` follows the official `load_inline(functions=[...])` template and launches:
+
+```text
+zero_output_kernel<<<1, 1>>>
+atomic_sum_kernel<<<num_blocks, THREADS>>>
+```
+
+Each CUDA block reduces one chunk and performs one `atomicAdd(output, block_sum)`.
+
+First candidate set:
+
+| Candidate | elements/block | approximate atomic adds for max shape |
+| --- | ---: | ---: |
+| `t256_i32` | 8192 | 6400 |
+| `t256_i64` | 16384 | 3200 |
+| `t512_i32` | 16384 | 3200 |
+| `t256_i128` | 32768 | 1600 |
+
+RTX 4090 correctness passed for the base file and all four generated variants.
+
+A100 benchmark is pending because Popcorn returned:
+
+```text
+Rate limit exceeded: 6/6 test submissions per hour. Try again in 899s.
+```
