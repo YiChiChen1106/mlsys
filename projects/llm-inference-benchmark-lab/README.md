@@ -111,9 +111,10 @@ From a second shell on `pink`, run a smoke benchmark:
 
 ```bash
 python scripts/benchmark_client.py \
-  --model Qwen/Qwen2.5-7B-Instruct \
+  --model qwen2.5-0.5b-smoke \
   --prompt-length short \
   --max-tokens 64 \
+  --warmup-requests 2 \
   --requests 1 \
   --out results/vllm_smoke.csv
 ```

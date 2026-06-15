@@ -107,6 +107,33 @@ def run_one_request(
         )
 
 
+def run_benchmark(
+    *,
+    endpoint: str,
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    measured_requests: int,
+    warmup_requests: int,
+    timeout_s: float,
+    runner=run_one_request,
+) -> list[RequestMetrics]:
+    rows = []
+    total_requests = warmup_requests + measured_requests
+    for request_id in range(total_requests):
+        row = runner(
+            request_id=request_id,
+            endpoint=endpoint,
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            timeout_s=timeout_s,
+        )
+        if request_id >= warmup_requests:
+            rows.append(row)
+    return rows
+
+
 def aggregate_metrics(rows: list[RequestMetrics]) -> dict[str, float | int]:
     requests_count = len(rows)
     if requests_count == 0:
@@ -166,22 +193,21 @@ def main() -> None:
     parser.add_argument("--prompt-length", choices=sorted(PROMPTS), default="short")
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--requests", type=int, default=1)
+    parser.add_argument("--warmup-requests", type=int, default=0)
     parser.add_argument("--timeout-s", type=float, default=120.0)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
     prompt = build_prompt(args.prompt_length)
-    rows = [
-        run_one_request(
-            request_id=request_id,
-            endpoint=args.endpoint,
-            model=args.model,
-            prompt=prompt,
-            max_tokens=args.max_tokens,
-            timeout_s=args.timeout_s,
-        )
-        for request_id in range(args.requests)
-    ]
+    rows = run_benchmark(
+        endpoint=args.endpoint,
+        model=args.model,
+        prompt=prompt,
+        max_tokens=args.max_tokens,
+        measured_requests=args.requests,
+        warmup_requests=args.warmup_requests,
+        timeout_s=args.timeout_s,
+    )
     write_csv(args.out, rows)
     print(json.dumps(aggregate_metrics(rows), indent=2, sort_keys=True))
 

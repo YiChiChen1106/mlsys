@@ -92,3 +92,19 @@ Every meaningful experiment should have:
 - The measured metrics.
 - A short interpretation of what changed and why it might have changed.
 - The next concrete step.
+
+## Learning And Interview Rule
+
+For inference-track work, every experiment note should also explain the knowledge behind the work. Do not only record commands and numbers.
+
+Add these sections to inference experiments:
+
+```md
+## What I Learned
+
+## Interview Answer
+
+## Follow-up Questions
+```
+
+Write `Interview Answer` as something the learner could say out loud in an AI infra interview. Keep it concrete: mention the framework, metric, bottleneck, debugging signal, and what was changed.

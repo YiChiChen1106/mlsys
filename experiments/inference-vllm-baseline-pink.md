@@ -49,6 +49,7 @@ python ~/mlsys-inference-smoke/scripts/benchmark_client.py \
   --model qwen2.5-0.5b-smoke \
   --prompt-length short \
   --max-tokens 64 \
+  --warmup-requests 2 \
   --requests 1 \
   --out ~/mlsys-inference-smoke/results/vllm_smoke.csv
 ```
@@ -62,9 +63,17 @@ python ~/mlsys-inference-smoke/scripts/benchmark_client.py \
 
 ## Results
 
+### Cold Start
+
 | GPU Count | Concurrency | TTFT | TPOT | Output tok/s | Peak GPU Memory | Failure Rate |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 1 | 1 | 0.9094 s | 0.0021 s | 61.27 | 19,778 MiB | 0.0 |
+
+### Warmed Steady State
+
+| GPU Count | Concurrency | TTFT | TPOT | Output tok/s | Peak GPU Memory | Failure Rate |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 1 | 0.0177 s | 0.0018 s | 488.53 | 19,778 MiB | 0.0 |
 
 ## Interpretation
 
@@ -76,6 +85,28 @@ python ~/mlsys-inference-smoke/scripts/benchmark_client.py \
 - The first smoke request succeeded and wrote `~/mlsys-inference-smoke/results/vllm_smoke.csv`.
 - The first request had high TTFT because the logs showed a Triton kernel JIT compilation during inference: `_compute_slot_mapping_kernel`.
 - The first attempt to pipe the inspection script from Windows exposed a CRLF issue, so shell scripts are now forced to LF with `.gitattributes`.
+- Warmup requests changed the benchmark a lot: after 2 warmup requests, measured TTFT dropped from about 0.91s to about 0.018s and output throughput rose from about 61 tokens/s to about 489 tokens/s.
+
+## What I Learned
+
+- vLLM is an inference serving engine, not a model. It wraps a model checkpoint with scheduling, KV cache management, optimized execution, and OpenAI-compatible APIs.
+- Docker is a good fit for inference experiments because it fixes the vLLM/PyTorch/CUDA runtime and makes the benchmark easier to reproduce on other machines.
+- A model id such as `Qwen/Qwen2.5-0.5B-Instruct` may trigger network calls from inside the container. A local Hugging Face snapshot path plus offline mode avoids network variance.
+- First-request latency can include warmup work such as CUDA graph capture or Triton kernel JIT, so cold-start latency and steady-state latency should be measured separately.
+- Warmup requests are not optional bookkeeping; they are part of benchmark methodology. Otherwise you can accidentally report cold-start behavior as steady-state performance.
+
+## Interview Answer
+
+```text
+I started by running vLLM in Docker on a dual RTX 4090 server and used a cached Qwen2.5-0.5B snapshot for a smoke test. The container could see both GPUs, but loading by Hugging Face model id failed because the container could not retrieve the file list from Hugging Face. I fixed the setup by mounting the host Hugging Face cache into the container and starting vLLM from the local snapshot path with HF_HUB_OFFLINE=1. The first request succeeded, but the TTFT was high because the logs showed a Triton JIT compilation during inference. After adding two warmup requests, steady-state TTFT dropped from about 0.91s to about 0.018s, which is why benchmark methodology has to separate cold start from steady-state performance.
+```
+
+## Follow-up Questions
+
+- How much does TTFT drop after one or more warmup requests?
+- Does vLLM Docker still need offline mode for larger cached models?
+- What changes when moving from 0.5B smoke testing to a 7B/8B baseline?
+- How should I choose a warmup count for a real 7B/8B benchmark?
 
 ## Next Step
 

@@ -1,6 +1,6 @@
 import pytest
 
-from benchmark_client import RequestMetrics, aggregate_metrics, build_prompt
+from benchmark_client import RequestMetrics, aggregate_metrics, build_prompt, run_benchmark
 from benchmark_client import parse_sse_content
 
 
@@ -60,3 +60,32 @@ def test_parse_sse_content_extracts_delta_text():
 
 def test_parse_sse_content_ignores_done_marker():
     assert parse_sse_content("data: [DONE]") == ""
+
+
+def test_run_benchmark_excludes_warmup_rows_from_returned_measurements():
+    calls = []
+
+    def fake_runner(**kwargs):
+        calls.append(kwargs["request_id"])
+        return RequestMetrics(
+            request_id=kwargs["request_id"],
+            ok=True,
+            ttft_s=0.10 + kwargs["request_id"],
+            latency_s=0.20 + kwargs["request_id"],
+            output_tokens=10,
+            error="",
+        )
+
+    rows = run_benchmark(
+        endpoint="http://127.0.0.1:8000/v1/chat/completions",
+        model="dummy",
+        prompt="hello",
+        max_tokens=8,
+        measured_requests=2,
+        warmup_requests=3,
+        timeout_s=5.0,
+        runner=fake_runner,
+    )
+
+    assert calls == [0, 1, 2, 3, 4]
+    assert [row.request_id for row in rows] == [3, 4]
