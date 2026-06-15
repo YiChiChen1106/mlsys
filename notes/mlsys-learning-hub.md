@@ -24,7 +24,9 @@ Key questions:
 
 ## Track 2: LLM Inference Systems
 
-Future topics:
+Current project: `projects/llm-inference-benchmark-lab`
+
+Core topics:
 
 - prefill vs decode
 - KV cache
@@ -32,6 +34,16 @@ Future topics:
 - attention kernel bottlenecks
 - RMSNorm / LayerNorm / Softmax
 - quantization and memory footprint
+
+First milestone:
+
+```text
+vLLM baseline on pink
+-> concurrency sweep
+-> prompt/output length sweep
+-> 1 GPU vs 2 GPU comparison
+-> TTFT / TPOT / throughput / memory report
+```
 
 ## Track 3: Performance Engineering
 
@@ -56,9 +68,17 @@ baseline
 5. Attention-related kernels.
 6. LLM serving experiments.
 
+## Active Project Map
+
+- Kernel track: [[vector-sum-reduction]]
+- Inference track: [[llm-inference-systems]]
+
 ## Interview Themes
 
 - Explain bandwidth-bound vs compute-bound.
 - Explain reduction and partial sums.
 - Explain why kernel performance depends on shape and hardware.
 - Explain how you benchmarked a custom Triton kernel against PyTorch.
+- Explain prefill vs decode.
+- Explain KV cache memory pressure.
+- Explain TTFT, TPOT, and throughput tradeoffs in LLM serving.
