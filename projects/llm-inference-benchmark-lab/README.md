@@ -90,7 +90,7 @@ Recommended first questions on `pink`:
 Inspect `pink`:
 
 ```bash
-ssh pink 'bash -s' < projects/llm-inference-benchmark-lab/scripts/inspect_pink.sh
+Get-Content -Raw projects/llm-inference-benchmark-lab/scripts/inspect_pink.sh | ssh pink bash -s
 ```
 
 Start vLLM on `pink` after copying or checking out this repository there:

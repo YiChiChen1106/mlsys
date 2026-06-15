@@ -8,9 +8,9 @@ Measure a first vLLM serving baseline on `pink` and understand how latency and t
 
 - Machine: `pink`
 - GPU: 2 x NVIDIA GeForce RTX 4090, 24 GB each
-- Driver:
-- Docker image:
-- Python:
+- Driver: NVIDIA 580.142, CUDA 13.0 reported by `nvidia-smi`
+- Docker image: not selected yet; Docker 29.1.5 is installed
+- Python: 3.12.2 system Python
 - Framework: vLLM
 - Model: `Qwen/Qwen2.5-7B-Instruct`
 
@@ -19,7 +19,7 @@ Measure a first vLLM serving baseline on `pink` and understand how latency and t
 ```bash
 ssh pink
 nvidia-smi
-ssh pink 'bash -s' < projects/llm-inference-benchmark-lab/scripts/inspect_pink.sh
+Get-Content -Raw projects/llm-inference-benchmark-lab/scripts/inspect_pink.sh | ssh pink bash -s
 ```
 
 ## Server Command
@@ -55,11 +55,12 @@ python scripts/benchmark_client.py \
 
 ## Interpretation
 
-- Ready for the first run. The initial smoke test should validate that the server starts, streams tokens, records TTFT and latency, and writes a CSV.
+- `pink` has two idle RTX 4090 GPUs, a recent NVIDIA driver, Docker, Python 3.12.2, and enough disk space.
+- The initial smoke test should validate that the server starts, streams tokens, records TTFT and latency, and writes a CSV.
+- The first attempt to pipe the inspection script from Windows exposed a CRLF issue, so shell scripts are now forced to LF with `.gitattributes`.
 
 ## Next Step
 
-- Run `inspect_pink.sh` on `pink`.
 - Install or activate vLLM.
 - Start the vLLM server with `TENSOR_PARALLEL_SIZE=1`.
 - Run the one-request smoke benchmark and paste the summary here.
