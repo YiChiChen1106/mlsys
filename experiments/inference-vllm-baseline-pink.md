@@ -25,19 +25,32 @@ Get-Content -Raw projects/llm-inference-benchmark-lab/scripts/inspect_pink.sh | 
 ## Server Command
 
 ```bash
-cd ~/mlsys/projects/llm-inference-benchmark-lab
-MODEL=Qwen/Qwen2.5-7B-Instruct TENSOR_PARALLEL_SIZE=1 bash scripts/run_vllm_server.sh
+SNAP=$HOME/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct/snapshots/7ae557604adf67be50417f59c2c2f167def9a775
+docker run -d \
+  --name vllm-smoke \
+  --gpus all \
+  --ipc=host \
+  -p 8000:8000 \
+  -e HF_HUB_OFFLINE=1 \
+  -e TRANSFORMERS_OFFLINE=1 \
+  -v $HOME/.cache/huggingface:/root/.cache/huggingface \
+  vllm/vllm-openai:latest \
+  --model /root/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct/snapshots/7ae557604adf67be50417f59c2c2f167def9a775 \
+  --tensor-parallel-size 1 \
+  --gpu-memory-utilization 0.80 \
+  --max-model-len 2048 \
+  --served-model-name qwen2.5-0.5b-smoke
 ```
 
 ## Benchmark Command
 
 ```bash
-python scripts/benchmark_client.py \
-  --model Qwen/Qwen2.5-7B-Instruct \
+python ~/mlsys-inference-smoke/scripts/benchmark_client.py \
+  --model qwen2.5-0.5b-smoke \
   --prompt-length short \
   --max-tokens 64 \
   --requests 1 \
-  --out results/vllm_smoke.csv
+  --out ~/mlsys-inference-smoke/results/vllm_smoke.csv
 ```
 
 ## Benchmark Matrix
@@ -51,12 +64,17 @@ python scripts/benchmark_client.py \
 
 | GPU Count | Concurrency | TTFT | TPOT | Output tok/s | Peak GPU Memory | Failure Rate |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-|  |  |  |  |  |  |  |
+| 1 | 1 | 0.9094 s | 0.0021 s | 61.27 | 19,778 MiB | 0.0 |
 
 ## Interpretation
 
 - `pink` has two idle RTX 4090 GPUs, a recent NVIDIA driver, Docker, Python 3.12.2, and enough disk space.
-- The initial smoke test should validate that the server starts, streams tokens, records TTFT and latency, and writes a CSV.
+- Docker GPU runtime works: `docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu22.04 nvidia-smi` sees both RTX 4090 GPUs.
+- The vLLM Docker image was already present on `pink`.
+- Starting from the Hugging Face model id failed inside the container because vLLM could not retrieve the Hugging Face file list from container networking.
+- Starting from the cached local snapshot path with `HF_HUB_OFFLINE=1` worked.
+- The first smoke request succeeded and wrote `~/mlsys-inference-smoke/results/vllm_smoke.csv`.
+- The first request had high TTFT because the logs showed a Triton kernel JIT compilation during inference: `_compute_slot_mapping_kernel`.
 - The first attempt to pipe the inspection script from Windows exposed a CRLF issue, so shell scripts are now forced to LF with `.gitattributes`.
 
 ## Next Step

@@ -100,6 +100,13 @@ cd ~/mlsys/projects/llm-inference-benchmark-lab
 MODEL=Qwen/Qwen2.5-7B-Instruct TENSOR_PARALLEL_SIZE=1 bash scripts/run_vllm_server.sh
 ```
 
+For Docker smoke tests on a cached local model snapshot:
+
+```bash
+SNAP=$HOME/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct/snapshots/7ae557604adf67be50417f59c2c2f167def9a775
+MODEL=$SNAP SERVED_MODEL_NAME=qwen2.5-0.5b-smoke CONTAINER_NAME=vllm-smoke bash scripts/run_vllm_docker.sh
+```
+
 From a second shell on `pink`, run a smoke benchmark:
 
 ```bash
