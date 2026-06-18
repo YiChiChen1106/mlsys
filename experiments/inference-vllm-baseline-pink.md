@@ -306,6 +306,28 @@ This sweep compares the same synthetic_768 prompt under repeated prompts, reques
 
 Takeaway: repeated prompts make TTFT look much better because prefix cache reuses prompt work. That is valuable for prefix-heavy products, but it should not be confused with uncached prefill performance.
 
+#### Metrics-Backed Prefix Cache Hit Ratio
+
+This sweep wraps each prefix-cache benchmark with `/metrics` snapshots and computes counter deltas from:
+
+- `vllm:prefix_cache_queries_total`
+- `vllm:prefix_cache_hits_total`
+- `vllm:kv_cache_usage_perc`
+- `vllm:num_requests_running`
+- `vllm:num_requests_waiting`
+- `vllm:num_preemptions_total`
+
+| TP Size | Mode | Prefix Cache Queries | Prefix Cache Hits | Hit Ratio | Avg TTFT | P95 TTFT | Avg Latency | Avg TPOT |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | repeated | 53,856 | 53,312 | 98.99% | 0.0416 s | 0.0427 s | 0.2762 s | 0.01466 s |
+| 1 | varied | 54,050 | 28,768 | 53.22% | 0.1047 s | 0.1703 s | 0.3393 s | 0.01466 s |
+| 1 | salted varied | 54,356 | 1,072 | 1.97% | 0.1678 s | 0.1696 s | 0.4024 s | 0.01466 s |
+| 2 | repeated | 53,856 | 51,744 | 96.08% | 0.0367 s | 0.0387 s | 0.1692 s | 0.00828 s |
+| 2 | varied | 54,050 | 544 | 1.01% | 0.2068 s | 0.2079 s | 0.3396 s | 0.00830 s |
+| 2 | salted varied | 54,356 | 1,072 | 1.97% | 0.2064 s | 0.2081 s | 0.3392 s | 0.00830 s |
+
+Takeaway: prefix-cache metrics confirm the latency story. Repeated prompts had very high hit ratios and very low TTFT. Salted varied prompts had near-zero hit ratios and exposed uncached prefill cost. TP=1 varied prompts still had a partial hit ratio, which shows why the server-side metrics are useful: prompt formatting alone does not prove whether a run is cached or uncached.
+
 Raw CSV summaries:
 
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_short_64_warm2_req16_c1_usage.csv`
@@ -348,6 +370,18 @@ Raw CSV summaries:
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_960_out81_req4_c1_context_boundary.csv`
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_960_out80_req4_c1_context_boundary.csv`
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_960_out81_req4_c1_context_boundary.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_768_out16_warm2_req32_c1_metrics_prefix_repeated.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_768_out16_warm2_req32_c1_metrics_prefix_varied.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_768_out16_warm2_req32_c1_metrics_prefix_salted.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_768_out16_warm2_req32_c1_metrics_prefix_repeated.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_768_out16_warm2_req32_c1_metrics_prefix_varied.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_768_out16_warm2_req32_c1_metrics_prefix_salted.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp1_prefix_metrics_repeated_delta.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp1_prefix_metrics_varied_delta.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp1_prefix_metrics_salted_delta.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp2_prefix_metrics_repeated_delta.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp2_prefix_metrics_varied_delta.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp2_prefix_metrics_salted_delta.csv`
 
 #### 0.5B Smoke Test
 
@@ -388,6 +422,8 @@ Raw CSV summaries:
 - In the KV pressure sweep, all requests still succeeded, but long prompts at concurrency 32 produced multi-second tail TTFT. This means the system had enough capacity to admit the requests, but scheduling and cache pressure made first-token latency much worse.
 - For synthetic_768, repeated prompts reduced TTFT from about 169 ms to 42 ms on TP=1, and from about 206 ms to 36 ms on TP=2. Prefix cache can be a large win, but only for traffic with shared prefixes.
 - Prefix-cache benchmarks and clean prefill benchmarks answer different questions. Prefix-cache tests measure reuse; salted varied prompt tests measure uncached prompt processing.
+- vLLM `/metrics` exposes prefix-cache counters, so hit ratio can be measured directly instead of inferred from TTFT. In the metrics-backed run, repeated prompts had about 96-99% hit ratio, while salted varied prompts were about 2%.
+- TP=1 varied prompts had a partial prefix-cache hit ratio of about 53%, while TP=2 varied prompts were about 1% in the later restarted service. This is a reminder to trust server-side counters over assumptions about prompt text.
 
 ## What I Learned
 

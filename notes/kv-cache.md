@@ -52,6 +52,21 @@ In the vLLM prefix-cache contrast on synthetic_768:
 
 This is a big win for traffic with shared prefixes, but it can hide raw prefill cost in a benchmark.
 
+The hit ratio can be measured directly from vLLM metrics:
+
+```text
+delta(vllm:prefix_cache_hits_total) / delta(vllm:prefix_cache_queries_total)
+```
+
+Measured examples:
+
+- TP=1 repeated: about 98.99% hit ratio.
+- TP=1 salted varied: about 1.97% hit ratio.
+- TP=2 repeated: about 96.08% hit ratio.
+- TP=2 salted varied: about 1.97% hit ratio.
+
+The TP=1 varied run had about 53.22% hit ratio, while TP=2 varied after service restart had about 1.01%. This is a reminder that server-side counters are more reliable than assumptions about prompt text.
+
 ## Inference Connection
 
 For a serving system, KV cache is not just a tensor. It becomes a resource-management problem:

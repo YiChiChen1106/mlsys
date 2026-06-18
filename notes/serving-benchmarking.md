@@ -32,6 +32,7 @@ Serving benchmarks should explain the latency-throughput tradeoff of an inferenc
 - Context admission depends on `prompt_tokens + requested max_tokens`, not only actual generated tokens.
 - KV pressure should be tested with long prompts and high concurrency. If all requests succeed but p95/p99 TTFT becomes seconds, the system is still under meaningful cache/scheduler pressure.
 - Prefix-cache benchmarks should be labeled separately from clean prefill benchmarks. Repeated prompts answer a product/cache-reuse question; salted varied prompts answer an uncached prefill question.
+- When available, collect server-side metrics before and after each run. For vLLM, `prefix_cache_hits_total`, `prefix_cache_queries_total`, `kv_cache_usage_perc`, `num_requests_waiting`, and `num_preemptions_total` turn client-side latency into a more explainable result.
 
 ## Interview Sentence
 
@@ -41,6 +42,10 @@ When I benchmark an LLM server, I separate TTFT, TPOT, end-to-end latency, throu
 
 ```text
 For cache-system experiments, I do not only look for failures. I increase sequence budget and concurrency, then watch p95/p99 TTFT and latency. In my vLLM run, long prompts at concurrency 32 all succeeded, but p99 TTFT reached several seconds, which is exactly the kind of pressure signal a scheduler or KV-cache optimization should address.
+```
+
+```text
+For prefix-cache experiments, I verify cache behavior with vLLM counters instead of assuming from prompt text. I take /metrics snapshots before and after the run, then compute delta(prefix_cache_hits_total) divided by delta(prefix_cache_queries_total). In my run, repeated prompts had about 96-99% hit ratio, while salted varied prompts were about 2%.
 ```
 
 ## Record Format
