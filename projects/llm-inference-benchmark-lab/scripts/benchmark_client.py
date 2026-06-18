@@ -4,6 +4,7 @@ import argparse
 import csv
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
@@ -115,13 +116,16 @@ def run_benchmark(
     max_tokens: int,
     measured_requests: int,
     warmup_requests: int,
+    concurrency: int = 1,
     timeout_s: float,
     runner=run_one_request,
 ) -> list[RequestMetrics]:
+    if concurrency < 1:
+        raise ValueError("concurrency must be >= 1")
+
     rows = []
-    total_requests = warmup_requests + measured_requests
-    for request_id in range(total_requests):
-        row = runner(
+    for request_id in range(warmup_requests):
+        runner(
             request_id=request_id,
             endpoint=endpoint,
             model=model,
@@ -129,12 +133,70 @@ def run_benchmark(
             max_tokens=max_tokens,
             timeout_s=timeout_s,
         )
-        if request_id >= warmup_requests:
-            rows.append(row)
+
+    measured_ids = range(warmup_requests, warmup_requests + measured_requests)
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = [
+            executor.submit(
+                runner,
+                request_id=request_id,
+                endpoint=endpoint,
+                model=model,
+                prompt=prompt,
+                max_tokens=max_tokens,
+                timeout_s=timeout_s,
+            )
+            for request_id in measured_ids
+        ]
+        for future in futures:
+            rows.append(future.result())
     return rows
 
 
-def aggregate_metrics(rows: list[RequestMetrics]) -> dict[str, float | int]:
+def run_measured_benchmark(
+    *,
+    endpoint: str,
+    model: str,
+    prompt: str,
+    max_tokens: int,
+    measured_requests: int,
+    warmup_requests: int,
+    concurrency: int = 1,
+    timeout_s: float,
+    runner=run_one_request,
+) -> tuple[list[RequestMetrics], float]:
+    for request_id in range(warmup_requests):
+        runner(
+            request_id=request_id,
+            endpoint=endpoint,
+            model=model,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            timeout_s=timeout_s,
+        )
+
+    measured_started = time.perf_counter()
+    rows = run_benchmark(
+        endpoint=endpoint,
+        model=model,
+        prompt=prompt,
+        max_tokens=max_tokens,
+        measured_requests=measured_requests,
+        warmup_requests=0,
+        concurrency=concurrency,
+        timeout_s=timeout_s,
+        runner=lambda **kwargs: runner(
+            **{**kwargs, "request_id": kwargs["request_id"] + warmup_requests}
+        ),
+    )
+    return rows, time.perf_counter() - measured_started
+
+
+def aggregate_metrics(
+    rows: list[RequestMetrics],
+    *,
+    wall_time_s: float | None = None,
+) -> dict[str, float | int]:
     requests_count = len(rows)
     if requests_count == 0:
         raise ValueError("cannot aggregate zero requests")
@@ -156,6 +218,7 @@ def aggregate_metrics(rows: list[RequestMetrics]) -> dict[str, float | int]:
 
     total_success_latency = sum(row.latency_s for row in successes)
     total_output_tokens = sum(row.output_tokens for row in successes)
+    throughput_denominator = wall_time_s if wall_time_s is not None else total_success_latency
     avg_tpot_values = [
         (row.latency_s - row.ttft_s) / row.output_tokens
         for row in successes
@@ -170,7 +233,8 @@ def aggregate_metrics(rows: list[RequestMetrics]) -> dict[str, float | int]:
         "avg_ttft_s": sum(row.ttft_s for row in successes) / successful_requests,
         "avg_latency_s": total_success_latency / successful_requests,
         "avg_tpot_s": sum(avg_tpot_values) / len(avg_tpot_values),
-        "output_tokens_per_s": total_output_tokens / total_success_latency,
+        "output_tokens_per_s": total_output_tokens / throughput_denominator,
+        "wall_time_s": wall_time_s or 0.0,
     }
 
 
@@ -194,22 +258,24 @@ def main() -> None:
     parser.add_argument("--max-tokens", type=int, default=128)
     parser.add_argument("--requests", type=int, default=1)
     parser.add_argument("--warmup-requests", type=int, default=0)
+    parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--timeout-s", type=float, default=120.0)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
     prompt = build_prompt(args.prompt_length)
-    rows = run_benchmark(
+    rows, measured_wall_time_s = run_measured_benchmark(
         endpoint=args.endpoint,
         model=args.model,
         prompt=prompt,
         max_tokens=args.max_tokens,
         measured_requests=args.requests,
         warmup_requests=args.warmup_requests,
+        concurrency=args.concurrency,
         timeout_s=args.timeout_s,
     )
     write_csv(args.out, rows)
-    print(json.dumps(aggregate_metrics(rows), indent=2, sort_keys=True))
+    print(json.dumps(aggregate_metrics(rows, wall_time_s=measured_wall_time_s), indent=2, sort_keys=True))
 
 
 if __name__ == "__main__":
