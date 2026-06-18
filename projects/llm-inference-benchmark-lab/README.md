@@ -80,6 +80,8 @@ The first vLLM baseline uses Qwen2.5-7B-Instruct on `pink` with 2 x RTX 4090.
 - TP=2 had lower end-to-end latency but higher long-prompt TTFT than TP=1 in the salted prefill sweep, which suggests tensor-parallel communication overhead during prefill.
 - At concurrency 64, TP=1 p99 latency was about 880 ms and TP=2 p99 latency was about 822 ms.
 - With `max_model_len=2048`, a 1968-token prompt plus 80 requested output tokens succeeded, while 81 requested output tokens was rejected.
+- KV pressure experiments showed that long prompts at concurrency 32 can push p99 TTFT into the 3-6 s range even with 0% failures.
+- Prefix-cache contrast showed repeated synthetic_768 prompts reducing TTFT from about 170-206 ms to about 36-42 ms.
 
 Full results are in `experiments/inference-vllm-baseline-pink.md`.
 

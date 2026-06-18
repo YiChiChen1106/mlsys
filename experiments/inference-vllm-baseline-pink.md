@@ -266,6 +266,46 @@ The server was launched with `--max-model-len 2048`. With the unsalted `syntheti
 
 The vLLM log for the rejected request says the model maximum context length is 2048 tokens, but the request asked for 81 output tokens with at least 1968 input tokens, for a total of at least 2049 tokens.
 
+#### KV Cache Pressure Sweep
+
+This sweep uses salted varied prompts to reduce prefix-cache reuse. It increases prompt length and concurrency while keeping total requested sequence length within `max_model_len=2048`.
+
+| TP Size | Prompt Bucket | Max Output Tokens | Concurrency | Avg Prompt Tokens | Avg TTFT | P95 TTFT | P99 TTFT | Avg Latency | P95 Latency | Avg TPOT | Failure Rate |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | synthetic_512 | 64 | 1 | 1084.8 | 0.1202 s | 0.1218 s | 0.1219 s | 1.1103 s | 1.1116 s | 0.01547 s | 0.0 |
+| 1 | synthetic_512 | 64 | 8 | 1084.8 | 0.5565 s | 0.9510 s | 0.9686 s | 1.8385 s | 2.0142 s | 0.02003 s | 0.0 |
+| 1 | synthetic_512 | 64 | 32 | 1085.8 | 1.6819 s | 3.0360 s | 3.1033 s | 4.2016 s | 4.3094 s | 0.03937 s | 0.0 |
+| 1 | synthetic_768 | 64 | 1 | 1596.8 | 0.1690 s | 0.1701 s | 0.1704 s | 1.1602 s | 1.1612 s | 0.01549 s | 0.0 |
+| 1 | synthetic_768 | 64 | 8 | 1596.8 | 0.5932 s | 1.0045 s | 1.1583 s | 2.1725 s | 2.4258 s | 0.02468 s | 0.0 |
+| 1 | synthetic_768 | 64 | 32 | 1597.8 | 2.5353 s | 4.6225 s | 4.7233 s | 5.7977 s | 5.9669 s | 0.05097 s | 0.0 |
+| 1 | synthetic_896 | 64 | 32 | 1853.8 | 2.9227 s | 5.2540 s | 5.4755 s | 6.5733 s | 6.7704 s | 0.05709 s | 0.0 |
+| 1 | synthetic_960 | 32 | 32 | 1981.8 | 3.1177 s | 5.6503 s | 5.8997 s | 6.2643 s | 6.4831 s | 0.09833 s | 0.0 |
+| 2 | synthetic_512 | 64 | 1 | 1084.8 | 0.1309 s | 0.1320 s | 0.1332 s | 0.6916 s | 0.6931 s | 0.00876 s | 0.0 |
+| 2 | synthetic_512 | 64 | 8 | 1084.8 | 0.5470 s | 0.8330 s | 0.9019 s | 1.5078 s | 1.6584 s | 0.01501 s | 0.0 |
+| 2 | synthetic_512 | 64 | 32 | 1085.8 | 1.9088 s | 3.4446 s | 3.4636 s | 4.2680 s | 4.3297 s | 0.03686 s | 0.0 |
+| 2 | synthetic_768 | 64 | 1 | 1596.8 | 0.2076 s | 0.2126 s | 0.2229 s | 0.7697 s | 0.7741 s | 0.00878 s | 0.0 |
+| 2 | synthetic_768 | 64 | 8 | 1596.8 | 0.7433 s | 1.1353 s | 1.2987 s | 1.9421 s | 2.1499 s | 0.01873 s | 0.0 |
+| 2 | synthetic_768 | 64 | 32 | 1597.8 | 2.8128 s | 5.1039 s | 5.2077 s | 5.9816 s | 6.0889 s | 0.04951 s | 0.0 |
+| 2 | synthetic_896 | 64 | 32 | 1853.8 | 3.2328 s | 5.7754 s | 6.0111 s | 6.8178 s | 6.9434 s | 0.05602 s | 0.0 |
+| 2 | synthetic_960 | 32 | 32 | 1981.8 | 3.4463 s | 6.2118 s | 6.4436 s | 6.7354 s | 6.8730 s | 0.10278 s | 0.0 |
+
+Takeaway: all requests succeeded, but high concurrency with long sequence budgets turned TTFT from sub-second into multi-second tail latency. This is the scheduler and KV-cache capacity pressure that a cache-system optimization should target.
+
+#### Prefix Cache Contrast
+
+This sweep compares the same synthetic_768 prompt under repeated prompts, request-id varied prompts, and salted varied prompts.
+
+| TP Size | Mode | Avg Prompt Tokens | Avg TTFT | P95 TTFT | Avg Latency | Avg TPOT |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | repeated | 1584.0 | 0.0416 s | 0.0437 s | 0.2764 s | 0.01467 s |
+| 1 | varied | 1589.5 | 0.1694 s | 0.1706 s | 0.4041 s | 0.01467 s |
+| 1 | salted varied | 1596.5 | 0.1699 s | 0.1729 s | 0.4047 s | 0.01467 s |
+| 2 | repeated | 1584.0 | 0.0356 s | 0.0364 s | 0.1683 s | 0.00829 s |
+| 2 | varied | 1589.5 | 0.2062 s | 0.2077 s | 0.3393 s | 0.00832 s |
+| 2 | salted varied | 1596.5 | 0.2064 s | 0.2080 s | 0.3393 s | 0.00831 s |
+
+Takeaway: repeated prompts make TTFT look much better because prefix cache reuses prompt work. That is valuable for prefix-heavy products, but it should not be confused with uncached prefill performance.
+
 Raw CSV summaries:
 
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_short_64_warm2_req16_c1_usage.csv`
@@ -345,6 +385,9 @@ Raw CSV summaries:
 - In the output-length sweep, decode latency scaled almost linearly with generated tokens. TP=1 stayed near 15 ms/token, while TP=2 stayed near 8.8 ms/token.
 - At concurrency 64, p99 TTFT reached about 252 ms for TP=1 and 212 ms for TP=2. Scheduler work should track these tail metrics because averages can hide queueing behavior.
 - With `max_model_len=2048`, a 1968-token prompt plus 80 requested output tokens succeeded, while 81 requested output tokens was rejected. vLLM admission checks the requested sequence budget, not just the prompt length.
+- In the KV pressure sweep, all requests still succeeded, but long prompts at concurrency 32 produced multi-second tail TTFT. This means the system had enough capacity to admit the requests, but scheduling and cache pressure made first-token latency much worse.
+- For synthetic_768, repeated prompts reduced TTFT from about 169 ms to 42 ms on TP=1, and from about 206 ms to 36 ms on TP=2. Prefix cache can be a large win, but only for traffic with shared prefixes.
+- Prefix-cache benchmarks and clean prefill benchmarks answer different questions. Prefix-cache tests measure reuse; salted varied prompt tests measure uncached prompt processing.
 
 ## What I Learned
 
@@ -362,6 +405,8 @@ Raw CSV summaries:
 - `prompt_tokens + requested max_tokens` must fit within the served `max_model_len`. The server can reject the request even before generation starts.
 - Prefill and decode can move in opposite directions under tensor parallelism: TP=2 improved TPOT, but salted long-prompt TTFT was higher than TP=1 on this PCIe/SYS topology.
 - Decode-heavy latency is mostly linear in generated token count when the prompt is fixed, so TPOT is a good compact way to compare decode performance.
+- KV pressure can show up as high TTFT and tail latency before it shows up as outright failure. A request can be accepted but still wait a long time for scheduling or cache capacity.
+- Prefix cache should be evaluated as its own feature. It can dramatically reduce TTFT for repeated/shared prompts, but it should not be used accidentally when trying to measure raw prefill cost.
 - Tensor parallelism is not "free multi-GPU speedup." Each layer introduces cross-GPU communication, so the benefit depends on compute saved versus communication overhead. On this short-output 7B run, TP=2 helped, but the speedup was below 2x.
 - GPU memory under vLLM includes allocated KV cache and execution buffers, so apparent memory usage can remain high on every GPU even when weights are sharded.
 - Scheduler-related experiments should report tail percentiles, not only averages. p95/p99 reveal queueing and batch-admission effects that averages can hide.

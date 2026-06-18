@@ -30,11 +30,17 @@ Serving benchmarks should explain the latency-throughput tradeoff of an inferenc
 - Repeated prompts can make prefix cache hide prefill work.
 - Request-id-only varied prompts can still leak prefix-cache state across prompt buckets if different buckets share the same long prefix. A per-run prompt salt helps break cross-experiment reuse.
 - Context admission depends on `prompt_tokens + requested max_tokens`, not only actual generated tokens.
+- KV pressure should be tested with long prompts and high concurrency. If all requests succeed but p95/p99 TTFT becomes seconds, the system is still under meaningful cache/scheduler pressure.
+- Prefix-cache benchmarks should be labeled separately from clean prefill benchmarks. Repeated prompts answer a product/cache-reuse question; salted varied prompts answer an uncached prefill question.
 
 ## Interview Sentence
 
 ```text
 When I benchmark an LLM server, I separate TTFT, TPOT, end-to-end latency, throughput, memory, and failures. For prefill experiments I vary and salt prompts to avoid prefix-cache contamination, and for decode experiments I sweep output length because latency should scale roughly with generated tokens.
+```
+
+```text
+For cache-system experiments, I do not only look for failures. I increase sequence budget and concurrency, then watch p95/p99 TTFT and latency. In my vLLM run, long prompts at concurrency 32 all succeeded, but p99 TTFT reached several seconds, which is exactly the kind of pressure signal a scheduler or KV-cache optimization should address.
 ```
 
 ## Record Format

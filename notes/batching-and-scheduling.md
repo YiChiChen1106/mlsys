@@ -35,6 +35,15 @@ At concurrency 64 on Qwen2.5-7B-Instruct:
 
 This is why scheduler optimization should not be judged only by average latency or tokens/s. Queueing, batch admission, and long-running decode steps usually show up in the tail first.
 
+With long salted prompts, the tail becomes much worse. At concurrency 32:
+
+- TP=1 synthetic_768, output 64: p99 TTFT about 4.72 s.
+- TP=1 synthetic_896, output 64: p99 TTFT about 5.48 s.
+- TP=2 synthetic_768, output 64: p99 TTFT about 5.21 s.
+- TP=2 synthetic_896, output 64: p99 TTFT about 6.01 s.
+
+This is the interview-relevant link between scheduler and KV cache: even without failures, the scheduler may keep requests waiting because long sequences consume more cache and execution budget.
+
 ## Experiment Questions
 
 - At what concurrency does throughput stop improving?

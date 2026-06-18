@@ -29,6 +29,29 @@ In the `pink` vLLM baseline, the server used `--max-model-len 2048`. A 1968-toke
 
 This is related to KV cache because every accepted token position needs cache space. The server cannot assume the model will stop early; it has to admit based on the requested maximum.
 
+## Pressure Symptoms
+
+KV cache pressure does not have to appear first as an OOM or rejected request. In the vLLM baseline, long salted prompts at concurrency 32 all succeeded, but TTFT moved into multi-second territory:
+
+- TP=1 synthetic_896, output 64, concurrency 32: p99 TTFT about 5.48 s.
+- TP=2 synthetic_896, output 64, concurrency 32: p99 TTFT about 6.01 s.
+- TP=2 synthetic_960, output 32, concurrency 32: p99 TTFT about 6.44 s.
+
+This means the cache and scheduler still admitted the requests, but first-token latency became much worse. For cache-system optimization, this is a more useful signal than only checking whether requests fail.
+
+## Prefix Cache
+
+Prefix cache is different from normal KV cache reuse during decode. It reuses prompt-prefix computation across requests with shared prefixes.
+
+In the vLLM prefix-cache contrast on synthetic_768:
+
+- TP=1 repeated prompt TTFT: about 42 ms.
+- TP=1 salted varied prompt TTFT: about 170 ms.
+- TP=2 repeated prompt TTFT: about 36 ms.
+- TP=2 salted varied prompt TTFT: about 206 ms.
+
+This is a big win for traffic with shared prefixes, but it can hide raw prefill cost in a benchmark.
+
 ## Inference Connection
 
 For a serving system, KV cache is not just a tensor. It becomes a resource-management problem:
