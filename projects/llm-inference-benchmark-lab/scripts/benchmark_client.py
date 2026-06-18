@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
@@ -69,6 +70,24 @@ def parse_sse_content(line: str) -> str:
 
 def estimate_tokens(text: str) -> int:
     return max(1, len(text.split()))
+
+
+def percentile(values: list[float], p: float) -> float:
+    if not values:
+        raise ValueError("cannot compute percentile of empty values")
+    if p < 0 or p > 100:
+        raise ValueError("percentile must be in [0, 100]")
+    sorted_values = sorted(values)
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+
+    rank = (p / 100) * (len(sorted_values) - 1)
+    lower = math.floor(rank)
+    upper = math.ceil(rank)
+    if lower == upper:
+        return sorted_values[int(rank)]
+    weight = rank - lower
+    return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
 
 
 def prompt_for_request(prompt: str, request_id: int, *, vary_prompts: bool) -> str:
@@ -247,7 +266,13 @@ def aggregate_metrics(
             "failed_requests": failed_requests,
             "failure_rate": 1.0,
             "avg_ttft_s": 0.0,
+            "p50_ttft_s": 0.0,
+            "p95_ttft_s": 0.0,
+            "p99_ttft_s": 0.0,
             "avg_latency_s": 0.0,
+            "p50_latency_s": 0.0,
+            "p95_latency_s": 0.0,
+            "p99_latency_s": 0.0,
             "avg_tpot_s": 0.0,
             "output_tokens_per_s": 0.0,
         }
@@ -255,6 +280,8 @@ def aggregate_metrics(
     total_success_latency = sum(row.latency_s for row in successes)
     total_output_tokens = sum(row.output_tokens for row in successes)
     throughput_denominator = wall_time_s if wall_time_s is not None else total_success_latency
+    ttft_values = [row.ttft_s for row in successes]
+    latency_values = [row.latency_s for row in successes]
     avg_tpot_values = [
         (row.latency_s - row.ttft_s) / row.output_tokens
         for row in successes
@@ -267,7 +294,13 @@ def aggregate_metrics(
         "failed_requests": failed_requests,
         "failure_rate": failed_requests / requests_count,
         "avg_ttft_s": sum(row.ttft_s for row in successes) / successful_requests,
+        "p50_ttft_s": percentile(ttft_values, 50),
+        "p95_ttft_s": percentile(ttft_values, 95),
+        "p99_ttft_s": percentile(ttft_values, 99),
         "avg_latency_s": total_success_latency / successful_requests,
+        "p50_latency_s": percentile(latency_values, 50),
+        "p95_latency_s": percentile(latency_values, 95),
+        "p99_latency_s": percentile(latency_values, 99),
         "avg_tpot_s": sum(avg_tpot_values) / len(avg_tpot_values),
         "output_tokens_per_s": total_output_tokens / throughput_denominator,
         "wall_time_s": wall_time_s or 0.0,

@@ -4,7 +4,7 @@ from threading import Lock
 import pytest
 
 from benchmark_client import RequestMetrics, aggregate_metrics, build_prompt, run_benchmark
-from benchmark_client import parse_sse_content, parse_sse_event, run_measured_benchmark
+from benchmark_client import parse_sse_content, parse_sse_event, percentile, run_measured_benchmark
 from benchmark_client import run_one_request
 
 
@@ -54,6 +54,59 @@ def test_aggregate_metrics_computes_latency_and_throughput():
     assert summary["avg_latency_s"] == pytest.approx(1.30)
     assert summary["avg_tpot_s"] == pytest.approx(0.05)
     assert summary["output_tokens_per_s"] == pytest.approx(40 / 2.60)
+
+
+def test_percentile_uses_linear_interpolation():
+    values = [1.0, 2.0, 3.0, 4.0]
+
+    assert percentile(values, 50) == pytest.approx(2.5)
+    assert percentile(values, 95) == pytest.approx(3.85)
+
+
+def test_aggregate_metrics_reports_tail_latency_percentiles():
+    rows = [
+        RequestMetrics(
+            request_id=0,
+            ok=True,
+            ttft_s=0.01,
+            latency_s=1.0,
+            output_tokens=10,
+            error="",
+        ),
+        RequestMetrics(
+            request_id=1,
+            ok=True,
+            ttft_s=0.02,
+            latency_s=2.0,
+            output_tokens=10,
+            error="",
+        ),
+        RequestMetrics(
+            request_id=2,
+            ok=True,
+            ttft_s=0.03,
+            latency_s=3.0,
+            output_tokens=10,
+            error="",
+        ),
+        RequestMetrics(
+            request_id=3,
+            ok=True,
+            ttft_s=0.04,
+            latency_s=4.0,
+            output_tokens=10,
+            error="",
+        ),
+    ]
+
+    summary = aggregate_metrics(rows)
+
+    assert summary["p50_ttft_s"] == pytest.approx(0.025)
+    assert summary["p95_ttft_s"] == pytest.approx(0.0385)
+    assert summary["p99_ttft_s"] == pytest.approx(0.0397)
+    assert summary["p50_latency_s"] == pytest.approx(2.5)
+    assert summary["p95_latency_s"] == pytest.approx(3.85)
+    assert summary["p99_latency_s"] == pytest.approx(3.97)
 
 
 def test_parse_sse_content_extracts_delta_text():

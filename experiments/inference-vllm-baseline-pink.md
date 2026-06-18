@@ -188,6 +188,15 @@ This means the two GPUs communicate across PCIe and the CPU interconnect, not NV
 | 8 | 443.82 | 674.72 | 1.52x | 0.0702 s | 0.0535 s |
 | 16 | 710.20 | 1099.00 | 1.55x | 0.1184 s | 0.0717 s |
 
+#### TP=1 vs TP=2 Tail Latency At Concurrency 16
+
+This run uses 64 measured requests and 4 warmup requests. Tail latency is more useful than average latency for scheduler work because queueing and batch admission usually show up first in p95/p99.
+
+| TP Size | Requests | Concurrency | Avg Latency | P50 Latency | P95 Latency | P99 Latency | Avg TTFT | P95 TTFT | P99 TTFT | Output tok/s |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 64 | 16 | 0.6619 s | 0.6398 s | 0.7585 s | 0.7655 s | 0.0963 s | 0.1161 s | 0.2135 s | 801.95 |
+| 2 | 64 | 16 | 0.4689 s | 0.4699 s | 0.4967 s | 0.5059 s | 0.0823 s | 0.1007 s | 0.1140 s | 1125.94 |
+
 #### 7B, 1 x RTX 4090, Varied Prompt, 64 Max Tokens
 
 This smaller sweep prepends a unique request id to each prompt to reduce prefix-cache reuse.
@@ -211,6 +220,8 @@ Raw CSV summaries:
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_short_64_warm2_req16_c4_usage.csv`
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_short_64_warm2_req16_c8_usage.csv`
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_short_64_warm2_req16_c16_usage.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_short_64_warm4_req64_c16_tail.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_short_64_warm4_req64_c16_tail.csv`
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_medium_64_warm2_req8_c1_usage_varied.csv`
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_medium_64_warm2_req8_c4_usage_varied.csv`
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_long_64_warm2_req8_c1_usage_varied.csv`
@@ -244,6 +255,7 @@ Raw CSV summaries:
 - TP=2 still improved short-prompt decode-heavy throughput by about 1.5x to 1.7x across this small concurrency sweep. At concurrency 16, throughput rose from about 710 tok/s to about 1099 tok/s and TTFT dropped from about 118 ms to about 72 ms.
 - TP=2 used about 20.7 GiB on each GPU. Tensor parallelism splits model compute, but serving memory also includes KV cache blocks, CUDA graphs, runtime buffers, and per-rank overhead; do not expect visible `nvidia-smi` memory to halve.
 - TP=2 was launched with `--disable-custom-all-reduce` for stability on this PCIe/SYS topology.
+- With 64 measured requests at concurrency 16, TP=2 also improved tail latency: p99 latency dropped from about 765 ms to about 506 ms, and p99 TTFT dropped from about 213 ms to about 114 ms.
 
 ## What I Learned
 
@@ -259,6 +271,7 @@ Raw CSV summaries:
 - Prompt-length experiments need either varied prompts or disabled prefix caching. Otherwise the benchmark can accidentally measure cache hits instead of prefill work.
 - Tensor parallelism is not "free multi-GPU speedup." Each layer introduces cross-GPU communication, so the benefit depends on compute saved versus communication overhead. On this short-output 7B run, TP=2 helped, but the speedup was below 2x.
 - GPU memory under vLLM includes allocated KV cache and execution buffers, so apparent memory usage can remain high on every GPU even when weights are sharded.
+- Scheduler-related experiments should report tail percentiles, not only averages. p95/p99 reveal queueing and batch-admission effects that averages can hide.
 
 ## Interview Answer
 
@@ -268,6 +281,8 @@ I started by running vLLM in Docker on a dual RTX 4090 server and used a cached 
 For the 7B baseline, I copied Qwen2.5-7B-Instruct to the server and served it from a local directory in vLLM Docker with offline mode. On one RTX 4090, the service used about 19.7 GiB of GPU memory. With two warmup requests and measured concurrency 1, 2, 4, 8, and 16, output throughput increased from about 62 to 118 to 229 to 444 to 710 tokens/s, while TTFT rose from about 32 ms to 118 ms. I fixed the benchmark client so concurrent throughput uses measured wall-clock time excluding warmup, and token throughput uses vLLM's streaming completion token usage instead of whitespace estimation. I also added a varied-prompt mode because repeated prompts can hit prefix cache and hide prefill cost.
 
 Then I repeated the same short-prompt benchmark with tensor-parallel size 2 across both RTX 4090s. The GPU topology was `SYS`, so the GPUs communicate over PCIe/CPU interconnect rather than NVLink. Even with that communication cost, TP=2 improved throughput from about 62 to 108 tok/s at concurrency 1 and from about 710 to 1099 tok/s at concurrency 16. The speedup was meaningful but below 2x, which is expected because tensor parallelism adds all-reduce communication and serving overhead. TP=2 also used about 20.7 GiB on each GPU, reminding me that serving memory is not just model weights; KV cache, CUDA graphs, and runtime buffers matter too.
+
+I then added p50/p95/p99 latency and TTFT to the benchmark client and reran a higher-sample concurrency-16 comparison with 64 measured requests. TP=2 improved not just average latency but also tail latency: p99 latency dropped from about 765 ms to 506 ms, and p99 TTFT dropped from about 213 ms to 114 ms. This matters for scheduler optimization because queueing and batch admission problems usually show up in tail metrics before they show up in averages.
 ```
 
 ## Follow-up Questions
@@ -281,13 +296,14 @@ Then I repeated the same short-prompt benchmark with tensor-parallel size 2 acro
 - Should prefix caching be disabled for a clean prefill benchmark, or should the report show both cached and uncached traffic?
 - Would TP=2 still win on truly long prompts and larger output lengths?
 - Would concurrency 32 saturate TP=2 or start hurting tail latency?
+- Which part of p99 TTFT comes from queueing versus prefill execution?
 
 ## Next Step
 
-- Add p50/p95 latency and TTFT reporting.
 - Add truly longer synthetic prompts to expose prefill cost.
 - Run TP=1 vs TP=2 with longer prompts and longer outputs.
 - Add concurrency 32 for the short-prompt sweep.
+- Add request phase instrumentation: waiting time, prefill time, decode time, and KV cache block usage.
 
 ## Resume / Interview Sentence
 
