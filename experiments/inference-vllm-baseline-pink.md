@@ -302,6 +302,19 @@ Before/after snapshots miss gauge peaks because `kv_cache_usage_perc`, running r
 
 Takeaway: both TP=1 and TP=2 showed large waiting queues and multi-second tail TTFT. TP=1 also drove reported KV cache usage close to full, while TP=2 still showed capacity waiting despite much lower reported KV usage. This suggests the slow case is not explained by a single number; scheduler capacity, batch-token limits, and KV cache allocation should be studied together.
 
+#### Scheduler Parameter Follow-Up
+
+This follow-up keeps the same slow workload as the time-series run: `synthetic_896`, `max_tokens=64`, `requests=96`, `concurrency=32`. It changes one scheduler-related option at a time.
+
+| TP Size | Config | Avg TTFT | P95 TTFT | P99 TTFT | Avg Latency | P95 Latency | P99 Latency | Avg TPOT | Max KV Usage | Max Waiting | Capacity Waiting | Preemptions |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | `--max-num-seqs 64` | 1.5161 s | 4.8905 s | 5.4277 s | 6.4991 s | 10.4793 s | 11.0168 s | 0.07786 s | 88.32% | 28 | 28 | 0 |
+| 1 | `--max-num-batched-tokens 8192` | 2.4877 s | 4.8186 s | 5.3341 s | 6.5752 s | 8.2986 s | 8.9817 s | 0.06393 s | 99.97% | 22 | 22 | 3 |
+| 2 | `--max-num-seqs 64` | 1.8112 s | 5.4648 s | 6.0532 s | 6.7969 s | 11.0643 s | 11.6501 s | 0.07796 s | 14.50% | 29 | 29 | 0 |
+| 2 | `--max-num-batched-tokens 8192` | 3.4815 s | 5.9130 s | 6.3091 s | 6.9027 s | 7.4660 s | 7.5539 s | 0.05355 s | 15.59% | 20 | 20 | 0 |
+
+Takeaway: increasing `max_num_seqs` to 64 did not materially reduce the capacity waiting queue for this workload. Increasing `max_num_batched_tokens` to 8192 reduced p99 latency and max waiting, but TTFT got worse and TP=1 showed preemptions. This is a real scheduler tradeoff rather than a monotonic improvement.
+
 #### Prefix Cache Contrast
 
 This sweep compares the same synthetic_768 prompt under repeated prompts, request-id varied prompts, and salted varied prompts.
