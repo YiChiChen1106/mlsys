@@ -24,6 +24,16 @@ time step 4: C D E
 - Throughput: total generated tokens per second.
 - Queue time: time spent waiting before execution.
 - Failure rate: requests that timeout or fail under load.
+- Tail latency: p95/p99 TTFT and p95/p99 latency, often the first place scheduler pressure appears.
+
+## vLLM Baseline Observation
+
+At concurrency 64 on Qwen2.5-7B-Instruct:
+
+- TP=1 p99 TTFT was about 252 ms and p99 latency was about 880 ms.
+- TP=2 p99 TTFT was about 212 ms and p99 latency was about 822 ms.
+
+This is why scheduler optimization should not be judged only by average latency or tokens/s. Queueing, batch admission, and long-running decode steps usually show up in the tail first.
 
 ## Experiment Questions
 

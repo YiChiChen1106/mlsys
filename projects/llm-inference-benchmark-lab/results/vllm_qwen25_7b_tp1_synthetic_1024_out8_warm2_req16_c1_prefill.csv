@@ -1,0 +1,17 @@
+request_id,ok,ttft_s,latency_s,output_tokens,error,prompt_tokens
+2,False,0.0,0.029519053176045418,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+3,False,0.0,0.023401854559779167,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+4,False,0.0,0.023739740252494812,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+5,False,0.0,0.024866177700459957,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+6,False,0.0,0.02429740596562624,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+7,False,0.0,0.024377292953431606,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+8,False,0.0,0.028429333120584488,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+9,False,0.0,0.024786904454231262,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+10,False,0.0,0.0245767617598176,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+11,False,0.0,0.02559662889689207,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+12,False,0.0,0.024787537753582,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+13,False,0.0,0.02462608553469181,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+14,False,0.0,0.025713322684168816,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+15,False,0.0,0.02456426527351141,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+16,False,0.0,0.024736848659813404,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+17,False,0.0,0.025523530319333076,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0

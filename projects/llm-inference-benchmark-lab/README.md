@@ -65,9 +65,23 @@ Keep the first run small:
 - TPOT: time per output token.
 - End-to-end latency.
 - Output tokens per second.
+- Prompt tokens.
+- P50/P95/P99 TTFT and latency.
 - Requests per second.
 - Peak GPU memory.
 - Failure rate.
+
+## Current vLLM Findings
+
+The first vLLM baseline uses Qwen2.5-7B-Instruct on `pink` with 2 x RTX 4090.
+
+- TP=2 improved decode TPOT from about 15.5 ms/token to about 8.8 ms/token.
+- Salted synthetic prefill runs showed TP=1 TTFT growing from about 71 ms at 575 prompt tokens to about 201 ms at 1984 prompt tokens.
+- TP=2 had lower end-to-end latency but higher long-prompt TTFT than TP=1 in the salted prefill sweep, which suggests tensor-parallel communication overhead during prefill.
+- At concurrency 64, TP=1 p99 latency was about 880 ms and TP=2 p99 latency was about 822 ms.
+- With `max_model_len=2048`, a 1968-token prompt plus 80 requested output tokens succeeded, while 81 requested output tokens was rejected.
+
+Full results are in `experiments/inference-vllm-baseline-pink.md`.
 
 ## Working Notes
 

@@ -36,6 +36,23 @@ limited GPU memory
 - Tensor parallelism: splits model computation across GPUs.
 - Quantization: reduces memory footprint and sometimes improves throughput.
 
+## TP=1 vs TP=2 Mental Model
+
+Tensor parallelism can improve decode throughput because each GPU handles part of the model computation. It is not a free 2x speedup because every layer may introduce cross-GPU communication.
+
+On the dual RTX 4090 `pink` server, GPU0-to-GPU1 topology is `SYS`, not NVLink. In the vLLM 7B baseline:
+
+- TP=2 reduced decode TPOT from about 15.5 ms/token to about 8.8 ms/token.
+- TP=2 had higher long-prompt salted prefill TTFT than TP=1 at the same prompt length.
+- The useful interview framing is: TP can help decode-heavy workloads, but prefill and scheduler behavior may pay communication overhead.
+
+## Prefill vs Decode
+
+- Prefill processes the input prompt and builds KV cache. It mostly shows up in TTFT.
+- Decode generates one token at a time. It mostly shows up in TPOT and output-length scaling.
+- A fixed prompt with output length 16, 64, 128, and 256 should have roughly linear latency growth during decode.
+- A fixed output length with prompt length increasing from about 575 to 1984 prompt tokens should show TTFT growth.
+
 ## First Frameworks To Study
 
 1. vLLM: first baseline for serving and benchmarking.

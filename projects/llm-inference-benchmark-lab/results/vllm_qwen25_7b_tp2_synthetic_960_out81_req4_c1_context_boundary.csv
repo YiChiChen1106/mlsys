@@ -1,0 +1,5 @@
+request_id,ok,ttft_s,latency_s,output_tokens,error,prompt_tokens
+0,False,0.0,0.0326027600094676,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+1,False,0.0,0.023573538288474083,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+2,False,0.0,0.02956115733832121,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0
+3,False,0.0,0.02414009440690279,0,400 Client Error: Bad Request for url: http://127.0.0.1:8000/v1/chat/completions,0

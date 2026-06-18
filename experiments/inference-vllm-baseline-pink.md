@@ -208,6 +208,64 @@ This smaller sweep prepends a unique request id to each prompt to reduce prefix-
 | long | 1 | 1 | 8 | 0.0330 s | 1.0198 s | 0.0154 s | 62.74 | 0.0 |
 | long | 1 | 4 | 8 | 0.0559 s | 1.0642 s | 0.0158 s | 238.66 | 0.0 |
 
+#### Salted Varied Synthetic Prefill Sweep
+
+This sweep uses synthetic prompt buckets, `--vary-prompts`, and a per-bucket `--prompt-salt`. The salt matters because request-id-only variation can still allow cross-experiment prefix-cache reuse when two prompt buckets share the same long synthetic prefix.
+
+| TP Size | Prompt Bucket | Avg Prompt Tokens | Requests | Avg TTFT | P95 TTFT | Avg Latency | P95 Latency | Avg TPOT |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | synthetic_256 | 575.5 | 16 | 0.0711 s | 0.0757 s | 0.3047 s | 0.3056 s | 0.01460 s |
+| 1 | synthetic_512 | 1087.5 | 16 | 0.1189 s | 0.1199 s | 0.3540 s | 0.3551 s | 0.01469 s |
+| 1 | synthetic_768 | 1599.5 | 16 | 0.1676 s | 0.1697 s | 0.4029 s | 0.4088 s | 0.01471 s |
+| 1 | synthetic_896 | 1855.5 | 16 | 0.1926 s | 0.1938 s | 0.4273 s | 0.4286 s | 0.01466 s |
+| 1 | synthetic_960 | 1983.5 | 16 | 0.2013 s | 0.2031 s | 0.4357 s | 0.4370 s | 0.01465 s |
+| 2 | synthetic_256 | 575.5 | 16 | 0.0837 s | 0.1087 s | 0.2169 s | 0.2416 s | 0.00832 s |
+| 2 | synthetic_512 | 1087.5 | 16 | 0.1301 s | 0.1315 s | 0.2630 s | 0.2637 s | 0.00831 s |
+| 2 | synthetic_768 | 1599.5 | 16 | 0.2049 s | 0.2056 s | 0.3378 s | 0.3385 s | 0.00831 s |
+| 2 | synthetic_896 | 1855.5 | 16 | 0.2124 s | 0.2137 s | 0.3452 s | 0.3461 s | 0.00830 s |
+| 2 | synthetic_960 | 1983.5 | 16 | 0.2242 s | 0.2256 s | 0.3570 s | 0.3585 s | 0.00830 s |
+
+Takeaway: TP=2 improves decode-token time, so end-to-end latency is lower even for these short 16-token outputs. But TTFT is higher for TP=2 at the same prompt length, which is consistent with tensor-parallel communication overhead showing up during prefill.
+
+#### Decode Output-Length Sweep
+
+| TP Size | Max Output Tokens | Avg Prompt Tokens | Requests | Avg TTFT | Avg Latency | Avg TPOT |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 16 | 93.5 | 16 | 0.0323 s | 0.2671 s | 0.01467 s |
+| 1 | 64 | 93.5 | 16 | 0.0311 s | 1.0181 s | 0.01542 s |
+| 1 | 128 | 93.5 | 16 | 0.0321 s | 2.0220 s | 0.01555 s |
+| 1 | 256 | 93.5 | 16 | 0.0333 s | 4.0302 s | 0.01561 s |
+| 2 | 16 | 88.0 | 16 | 0.0242 s | 0.1580 s | 0.00836 s |
+| 2 | 64 | 88.0 | 16 | 0.0237 s | 0.5846 s | 0.00876 s |
+| 2 | 128 | 88.0 | 16 | 0.0253 s | 1.1560 s | 0.00883 s |
+| 2 | 256 | 93.5 | 16 | 0.0314 s | 2.2999 s | 0.00886 s |
+
+Takeaway: decode latency scales almost linearly with generated tokens. TP=2 cuts TPOT from about 15.5 ms/token to about 8.8 ms/token on this dual-4090 setup.
+
+#### Scheduler Stress At Concurrency 32 And 64
+
+| TP Size | Concurrency | Requests | Avg TTFT | P95 TTFT | P99 TTFT | Avg Latency | P95 Latency | P99 Latency | Avg TPOT |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 32 | 64 | 0.1085 s | 0.1400 s | 0.1477 s | 0.6995 s | 0.7333 s | 0.7383 s | 0.01738 s |
+| 2 | 32 | 64 | 0.1303 s | 0.1795 s | 0.1917 s | 0.6445 s | 0.7270 s | 0.7372 s | 0.01512 s |
+| 1 | 64 | 128 | 0.1560 s | 0.2387 s | 0.2521 s | 0.7902 s | 0.8558 s | 0.8805 s | 0.01865 s |
+| 2 | 64 | 128 | 0.1546 s | 0.2092 s | 0.2121 s | 0.7125 s | 0.7926 s | 0.8220 s | 0.01641 s |
+
+Takeaway: increasing concurrency from 32 to 64 raises tail TTFT and latency. TP=2 keeps lower decode cost, but scheduler evaluation should look at p95/p99, not only average throughput.
+
+#### Context-Length Boundary
+
+The server was launched with `--max-model-len 2048`. With the unsalted `synthetic_960` prompt, vLLM reported 1968 prompt tokens.
+
+| TP Size | Prompt Tokens | Requested Output Tokens | Total Budget | Result |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 1968 | 80 | 2048 | success |
+| 1 | 1968 | 81 | 2049 | rejected |
+| 2 | 1968 | 80 | 2048 | success |
+| 2 | 1968 | 81 | 2049 | rejected |
+
+The vLLM log for the rejected request says the model maximum context length is 2048 tokens, but the request asked for 81 output tokens with at least 1968 input tokens, for a total of at least 2049 tokens.
+
 Raw CSV summaries:
 
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_short_64_warm2_req16_c1_usage.csv`
@@ -226,6 +284,30 @@ Raw CSV summaries:
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_medium_64_warm2_req8_c4_usage_varied.csv`
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_long_64_warm2_req8_c1_usage_varied.csv`
 - `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_long_64_warm2_req8_c4_usage_varied.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_256_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_512_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_768_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_896_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_960_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_256_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_512_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_768_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_896_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_960_out16_warm2_req16_c1_salted_varied_prefill.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_long_out16_warm2_req16_c1_decode.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_long_out64_warm2_req16_c1_decode.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_long_out128_warm2_req16_c1_decode.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_long_out256_warm2_req16_c1_decode.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_long_out16_warm2_req16_c1_decode.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_long_out64_warm2_req16_c1_decode.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_long_out128_warm2_req16_c1_decode.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_long_out256_warm2_req16_c1_decode.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_short_64_warm4_req128_c64_tail.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_short_64_warm4_req128_c64_tail.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_960_out80_req4_c1_context_boundary.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_960_out81_req4_c1_context_boundary.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_960_out80_req4_c1_context_boundary.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_960_out81_req4_c1_context_boundary.csv`
 
 #### 0.5B Smoke Test
 
@@ -249,13 +331,20 @@ Raw CSV summaries:
 - Increasing concurrency from 1 to 16 improved measured output throughput from about 62 tok/s to about 710 tok/s, while average TTFT increased from about 32 ms to about 118 ms. This is the latency-throughput tradeoff from batching and scheduling.
 - A first version of the concurrency benchmark accidentally included warmup time in measured wall-clock throughput. TTFT and per-request latency were still valid, but output tok/s was underestimated. The benchmark client now excludes warmup from measured wall time.
 - A second benchmark-client correction uses vLLM streaming usage to count completion tokens. This is more accurate than estimating tokens from generated text with whitespace splitting.
+- The benchmark client now also records server-reported `prompt_tokens`, which makes it possible to separate prefill-sensitive input length from decode-sensitive output length.
 - The medium and long prompts used here are still short in token terms. Their TTFT stayed close to the short-prompt run; the larger end-to-end latency came mostly from generating 64 output tokens instead of about 34 output tokens in the short prompt.
 - Repeated prompt benchmarks can show optimistic prefill behavior because prefix cache may reuse shared prompt prefixes. The varied prompt mode reduces that effect by making request prefixes different.
+- Request-id-only varied prompts were still not enough for a clean synthetic prefill sweep because different prompt buckets can share long prefixes across experiments. The client now supports `--prompt-salt` so each bucket can break cross-experiment prefix-cache reuse.
 - `nvidia-smi topo -m` reports `SYS` between GPU0 and GPU1, so tensor parallel communication crosses PCIe and the CPU interconnect rather than NVLink.
 - TP=2 still improved short-prompt decode-heavy throughput by about 1.5x to 1.7x across this small concurrency sweep. At concurrency 16, throughput rose from about 710 tok/s to about 1099 tok/s and TTFT dropped from about 118 ms to about 72 ms.
 - TP=2 used about 20.7 GiB on each GPU. Tensor parallelism splits model compute, but serving memory also includes KV cache blocks, CUDA graphs, runtime buffers, and per-rank overhead; do not expect visible `nvidia-smi` memory to halve.
 - TP=2 was launched with `--disable-custom-all-reduce` for stability on this PCIe/SYS topology.
 - With 64 measured requests at concurrency 16, TP=2 also improved tail latency: p99 latency dropped from about 765 ms to about 506 ms, and p99 TTFT dropped from about 213 ms to about 114 ms.
+- In the salted synthetic prefill sweep, TP=1 TTFT rose from about 71 ms at 575 prompt tokens to about 201 ms at 1984 prompt tokens. This shows prefill cost growing with input length.
+- In the same salted prefill sweep, TP=2 had better TPOT but higher TTFT than TP=1 at matching prompt lengths. This is a useful example of tensor parallelism helping decode while adding communication overhead to prefill.
+- In the output-length sweep, decode latency scaled almost linearly with generated tokens. TP=1 stayed near 15 ms/token, while TP=2 stayed near 8.8 ms/token.
+- At concurrency 64, p99 TTFT reached about 252 ms for TP=1 and 212 ms for TP=2. Scheduler work should track these tail metrics because averages can hide queueing behavior.
+- With `max_model_len=2048`, a 1968-token prompt plus 80 requested output tokens succeeded, while 81 requested output tokens was rejected. vLLM admission checks the requested sequence budget, not just the prompt length.
 
 ## What I Learned
 
@@ -269,6 +358,10 @@ Raw CSV summaries:
 - vLLM's value starts to show under concurrent load: average latency rises slightly, but wall-clock throughput increases because the scheduler can batch decode work across requests.
 - `max_tokens` is a cap, not a guarantee. The model can stop early, so token throughput needs actual completion token counts from the server.
 - Prompt-length experiments need either varied prompts or disabled prefix caching. Otherwise the benchmark can accidentally measure cache hits instead of prefill work.
+- For synthetic prompt sweeps, varied request ids alone may not be enough. If prompt buckets share the same long prefix across runs, prefix cache can still leak across experiments; adding a per-run salt makes the benchmark cleaner.
+- `prompt_tokens + requested max_tokens` must fit within the served `max_model_len`. The server can reject the request even before generation starts.
+- Prefill and decode can move in opposite directions under tensor parallelism: TP=2 improved TPOT, but salted long-prompt TTFT was higher than TP=1 on this PCIe/SYS topology.
+- Decode-heavy latency is mostly linear in generated token count when the prompt is fixed, so TPOT is a good compact way to compare decode performance.
 - Tensor parallelism is not "free multi-GPU speedup." Each layer introduces cross-GPU communication, so the benefit depends on compute saved versus communication overhead. On this short-output 7B run, TP=2 helped, but the speedup was below 2x.
 - GPU memory under vLLM includes allocated KV cache and execution buffers, so apparent memory usage can remain high on every GPU even when weights are sharded.
 - Scheduler-related experiments should report tail percentiles, not only averages. p95/p99 reveal queueing and batch-admission effects that averages can hide.
@@ -283,6 +376,10 @@ For the 7B baseline, I copied Qwen2.5-7B-Instruct to the server and served it fr
 Then I repeated the same short-prompt benchmark with tensor-parallel size 2 across both RTX 4090s. The GPU topology was `SYS`, so the GPUs communicate over PCIe/CPU interconnect rather than NVLink. Even with that communication cost, TP=2 improved throughput from about 62 to 108 tok/s at concurrency 1 and from about 710 to 1099 tok/s at concurrency 16. The speedup was meaningful but below 2x, which is expected because tensor parallelism adds all-reduce communication and serving overhead. TP=2 also used about 20.7 GiB on each GPU, reminding me that serving memory is not just model weights; KV cache, CUDA graphs, and runtime buffers matter too.
 
 I then added p50/p95/p99 latency and TTFT to the benchmark client and reran a higher-sample concurrency-16 comparison with 64 measured requests. TP=2 improved not just average latency but also tail latency: p99 latency dropped from about 765 ms to 506 ms, and p99 TTFT dropped from about 213 ms to 114 ms. This matters for scheduler optimization because queueing and batch admission problems usually show up in tail metrics before they show up in averages.
+
+Next I split prefill and decode more explicitly. I added prompt-token accounting, synthetic prompt buckets, and a prompt salt to avoid cross-experiment prefix-cache leakage. In the salted prefill sweep, TP=1 TTFT rose from about 71 ms at 575 prompt tokens to about 201 ms at 1984 prompt tokens. TP=2 had lower TPOT, around 8.3 ms/token instead of 14.6 ms/token, but its long-prompt TTFT was higher than TP=1, which is a good example of tensor parallelism helping decode while adding communication cost during prefill. I also swept output length from 16 to 256 tokens and saw decode latency scale almost linearly with generated tokens.
+
+Finally I tested the context-length admission boundary. With `max_model_len=2048`, a 1968-token prompt plus 80 requested output tokens succeeded, while 81 requested output tokens was rejected because the requested sequence budget became 2049. That taught me to reason about `prompt_tokens + max_new_tokens`, not just prompt length or actual generated length.
 ```
 
 ## Follow-up Questions

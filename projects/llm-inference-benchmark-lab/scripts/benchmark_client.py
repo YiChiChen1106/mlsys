@@ -11,6 +11,14 @@ from pathlib import Path
 from typing import Iterable
 
 
+def build_synthetic_prompt(token_words: int) -> str:
+    prefix = (
+        "You are evaluating LLM serving prefill behavior. "
+        "Summarize the following diagnostic context briefly.\n\n"
+    )
+    return prefix + " ".join(["prefill"] * token_words)
+
+
 PROMPTS = {
     "short": "Explain ML systems inference in two concise sentences.",
     "medium": (
@@ -23,6 +31,13 @@ PROMPTS = {
         "KV cache allocation, continuous batching, tensor parallelism, GPU memory limits, "
         "and how to design a benchmark that measures TTFT, TPOT, throughput, and failures."
     ),
+    "synthetic_256": build_synthetic_prompt(256),
+    "synthetic_512": build_synthetic_prompt(512),
+    "synthetic_768": build_synthetic_prompt(768),
+    "synthetic_896": build_synthetic_prompt(896),
+    "synthetic_960": build_synthetic_prompt(960),
+    "synthetic_1024": build_synthetic_prompt(1024),
+    "synthetic_1536": build_synthetic_prompt(1536),
 }
 
 
@@ -34,12 +49,14 @@ class RequestMetrics:
     latency_s: float
     output_tokens: int
     error: str
+    prompt_tokens: int = 0
 
 
 @dataclass(frozen=True)
 class StreamEvent:
     content: str
     completion_tokens: int | None
+    prompt_tokens: int | None
 
 
 def build_prompt(length: str) -> str:
@@ -50,18 +67,19 @@ def build_prompt(length: str) -> str:
 
 def parse_sse_event(line: str) -> StreamEvent:
     if not line.startswith("data: "):
-        return StreamEvent(content="", completion_tokens=None)
+        return StreamEvent(content="", completion_tokens=None, prompt_tokens=None)
     payload = line.removeprefix("data: ").strip()
     if payload == "[DONE]":
-        return StreamEvent(content="", completion_tokens=None)
+        return StreamEvent(content="", completion_tokens=None, prompt_tokens=None)
     data = json.loads(payload)
     usage = data.get("usage") or {}
+    prompt_tokens = usage.get("prompt_tokens")
     completion_tokens = usage.get("completion_tokens")
     choices = data.get("choices") or []
     if not choices:
-        return StreamEvent(content="", completion_tokens=completion_tokens)
+        return StreamEvent(content="", completion_tokens=completion_tokens, prompt_tokens=prompt_tokens)
     content = choices[0].get("delta", {}).get("content", "")
-    return StreamEvent(content=content, completion_tokens=completion_tokens)
+    return StreamEvent(content=content, completion_tokens=completion_tokens, prompt_tokens=prompt_tokens)
 
 
 def parse_sse_content(line: str) -> str:
@@ -90,9 +108,17 @@ def percentile(values: list[float], p: float) -> float:
     return sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight
 
 
-def prompt_for_request(prompt: str, request_id: int, *, vary_prompts: bool) -> str:
+def prompt_for_request(
+    prompt: str,
+    request_id: int,
+    *,
+    vary_prompts: bool,
+    prompt_salt: str = "",
+) -> str:
     if not vary_prompts:
         return prompt
+    if prompt_salt:
+        return f"[{prompt_salt} request {request_id}] {prompt}"
     return f"[request {request_id}] {prompt}"
 
 
@@ -111,6 +137,7 @@ def run_one_request(
     first_token_at = 0.0
     generated_text = []
     output_tokens = None
+    prompt_tokens = None
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -133,6 +160,8 @@ def run_one_request(
                 generated_text.append(content)
                 if event.completion_tokens is not None:
                     output_tokens = event.completion_tokens
+                if event.prompt_tokens is not None:
+                    prompt_tokens = event.prompt_tokens
         ended = time.perf_counter()
         return RequestMetrics(
             request_id=request_id,
@@ -141,6 +170,22 @@ def run_one_request(
             latency_s=ended - started,
             output_tokens=output_tokens if output_tokens is not None else estimate_tokens(" ".join(generated_text)),
             error="",
+            prompt_tokens=prompt_tokens or 0,
+        )
+    except requests.HTTPError as exc:
+        ended = time.perf_counter()
+        response_body = exc.response.text if exc.response is not None else ""
+        error = str(exc)
+        if response_body:
+            error = f"{error}: {response_body[:500]}"
+        return RequestMetrics(
+            request_id=request_id,
+            ok=False,
+            ttft_s=0.0,
+            latency_s=ended - started,
+            output_tokens=0,
+            error=error,
+            prompt_tokens=0,
         )
     except Exception as exc:
         ended = time.perf_counter()
@@ -151,6 +196,7 @@ def run_one_request(
             latency_s=ended - started,
             output_tokens=0,
             error=str(exc),
+            prompt_tokens=0,
         )
 
 
@@ -164,6 +210,7 @@ def run_benchmark(
     warmup_requests: int,
     concurrency: int = 1,
     vary_prompts: bool = False,
+    prompt_salt: str = "",
     timeout_s: float,
     runner=run_one_request,
 ) -> list[RequestMetrics]:
@@ -176,7 +223,12 @@ def run_benchmark(
             request_id=request_id,
             endpoint=endpoint,
             model=model,
-            prompt=prompt_for_request(prompt, request_id, vary_prompts=vary_prompts),
+            prompt=prompt_for_request(
+                prompt,
+                request_id,
+                vary_prompts=vary_prompts,
+                prompt_salt=prompt_salt,
+            ),
             max_tokens=max_tokens,
             timeout_s=timeout_s,
         )
@@ -189,7 +241,12 @@ def run_benchmark(
                 request_id=request_id,
                 endpoint=endpoint,
                 model=model,
-                prompt=prompt_for_request(prompt, request_id, vary_prompts=vary_prompts),
+                prompt=prompt_for_request(
+                    prompt,
+                    request_id,
+                    vary_prompts=vary_prompts,
+                    prompt_salt=prompt_salt,
+                ),
                 max_tokens=max_tokens,
                 timeout_s=timeout_s,
             )
@@ -210,6 +267,7 @@ def run_measured_benchmark(
     warmup_requests: int,
     concurrency: int = 1,
     vary_prompts: bool = False,
+    prompt_salt: str = "",
     timeout_s: float,
     runner=run_one_request,
 ) -> tuple[list[RequestMetrics], float]:
@@ -221,7 +279,12 @@ def run_measured_benchmark(
             request_id=request_id,
             endpoint=endpoint,
             model=model,
-            prompt=prompt_for_request(prompt, request_id, vary_prompts=vary_prompts),
+            prompt=prompt_for_request(
+                prompt,
+                request_id,
+                vary_prompts=vary_prompts,
+                prompt_salt=prompt_salt,
+            ),
             max_tokens=max_tokens,
             timeout_s=timeout_s,
         )
@@ -236,7 +299,12 @@ def run_measured_benchmark(
                 request_id=request_id,
                 endpoint=endpoint,
                 model=model,
-                prompt=prompt_for_request(prompt, request_id, vary_prompts=vary_prompts),
+                prompt=prompt_for_request(
+                    prompt,
+                    request_id,
+                    vary_prompts=vary_prompts,
+                    prompt_salt=prompt_salt,
+                ),
                 max_tokens=max_tokens,
                 timeout_s=timeout_s,
             )
@@ -274,11 +342,13 @@ def aggregate_metrics(
             "p95_latency_s": 0.0,
             "p99_latency_s": 0.0,
             "avg_tpot_s": 0.0,
+            "avg_prompt_tokens": 0.0,
             "output_tokens_per_s": 0.0,
         }
 
     total_success_latency = sum(row.latency_s for row in successes)
     total_output_tokens = sum(row.output_tokens for row in successes)
+    total_prompt_tokens = sum(row.prompt_tokens for row in successes)
     throughput_denominator = wall_time_s if wall_time_s is not None else total_success_latency
     ttft_values = [row.ttft_s for row in successes]
     latency_values = [row.latency_s for row in successes]
@@ -302,6 +372,7 @@ def aggregate_metrics(
         "p95_latency_s": percentile(latency_values, 95),
         "p99_latency_s": percentile(latency_values, 99),
         "avg_tpot_s": sum(avg_tpot_values) / len(avg_tpot_values),
+        "avg_prompt_tokens": total_prompt_tokens / successful_requests,
         "output_tokens_per_s": total_output_tokens / throughput_denominator,
         "wall_time_s": wall_time_s or 0.0,
     }
@@ -329,6 +400,7 @@ def main() -> None:
     parser.add_argument("--warmup-requests", type=int, default=0)
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--vary-prompts", action="store_true")
+    parser.add_argument("--prompt-salt", default="")
     parser.add_argument("--timeout-s", type=float, default=120.0)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -343,6 +415,7 @@ def main() -> None:
         warmup_requests=args.warmup_requests,
         concurrency=args.concurrency,
         vary_prompts=args.vary_prompts,
+        prompt_salt=args.prompt_salt,
         timeout_s=args.timeout_s,
     )
     write_csv(args.out, rows)
