@@ -315,6 +315,23 @@ This follow-up keeps the same slow workload as the time-series run: `synthetic_8
 
 Takeaway: increasing `max_num_seqs` to 64 did not materially reduce the capacity waiting queue for this workload. Increasing `max_num_batched_tokens` to 8192 reduced p99 latency and max waiting, but TTFT got worse and TP=1 showed preemptions. This is a real scheduler tradeoff rather than a monotonic improvement.
 
+#### Max Num Batched Tokens Sweep
+
+This sweep fills in intermediate `max_num_batched_tokens` values for the same slow workload.
+
+| TP Size | `max_num_batched_tokens` | Avg TTFT | P95 TTFT | P99 TTFT | P99 Latency | Avg TPOT | Max KV Usage | Max Waiting | Preemptions |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | default | 1.5052 s | 4.8715 s | 5.4089 s | 11.0199 s | 0.07827 s | 97.06% | 27 | 0 |
+| 1 | 4096 | 1.9610 s | 4.7191 s | 5.2715 s | 10.4240 s | 0.07075 s | 98.41% | 25 | 0 |
+| 1 | 6144 | 2.1058 s | 4.7031 s | 5.2443 s | 9.5297 s | 0.06874 s | 99.45% | 23 | 0 |
+| 1 | 8192 | 2.4877 s | 4.8186 s | 5.3341 s | 8.9817 s | 0.06393 s | 99.97% | 22 | 3 |
+| 2 | default | 1.8882 s | 5.3270 s | 5.9417 s | 11.1395 s | 0.07603 s | 15.39% | 29 | 0 |
+| 2 | 4096 | 2.8042 s | 5.5128 s | 6.2324 s | 9.4987 s | 0.06389 s | 15.51% | 24 | 0 |
+| 2 | 6144 | 3.0648 s | 5.5637 s | 6.0372 s | 9.1434 s | 0.05948 s | 15.58% | 20 | 0 |
+| 2 | 8192 | 3.4815 s | 5.9130 s | 6.3091 s | 7.5539 s | 0.05355 s | 15.59% | 20 | 0 |
+
+Takeaway: larger batched-token budgets improved TPOT, reduced waiting, and lowered p99 latency, but they also worsened average TTFT. On TP=1, the largest tested budget introduced preemptions. This makes `max_num_batched_tokens` a clear latency-throughput scheduler tradeoff knob.
+
 #### Prefix Cache Contrast
 
 This sweep compares the same synthetic_768 prompt under repeated prompts, request-id varied prompts, and salted varied prompts.
