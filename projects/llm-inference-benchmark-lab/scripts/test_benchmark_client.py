@@ -4,7 +4,8 @@ from threading import Lock
 import pytest
 
 from benchmark_client import RequestMetrics, aggregate_metrics, build_prompt, run_benchmark
-from benchmark_client import parse_sse_content, run_measured_benchmark
+from benchmark_client import parse_sse_content, parse_sse_event, run_measured_benchmark
+from benchmark_client import run_one_request
 
 
 def test_build_prompt_uses_requested_token_bucket():
@@ -63,6 +64,62 @@ def test_parse_sse_content_extracts_delta_text():
 
 def test_parse_sse_content_ignores_done_marker():
     assert parse_sse_content("data: [DONE]") == ""
+
+
+def test_parse_sse_event_extracts_completion_tokens_from_usage():
+    line = 'data: {"choices":[],"usage":{"completion_tokens":42}}'
+
+    event = parse_sse_event(line)
+
+    assert event.content == ""
+    assert event.completion_tokens == 42
+
+
+def test_run_one_request_uses_stream_usage_for_output_tokens(monkeypatch):
+    import requests
+
+    captured_payload = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, decode_unicode=True):
+            assert decode_unicode is True
+            return iter(
+                [
+                    'data: {"choices":[{"delta":{"content":"hello world"}}]}',
+                    'data: {"choices":[],"usage":{"completion_tokens":42}}',
+                    "data: [DONE]",
+                ]
+            )
+
+    def fake_post(_endpoint, *, json, stream, timeout):
+        captured_payload.update(json)
+        assert stream is True
+        assert timeout == 5.0
+        return FakeResponse()
+
+    monkeypatch.setattr(requests, "post", fake_post)
+
+    metrics = run_one_request(
+        request_id=0,
+        endpoint="http://127.0.0.1:8000/v1/chat/completions",
+        model="dummy",
+        prompt="hello",
+        max_tokens=8,
+        timeout_s=5.0,
+    )
+
+    assert metrics.ok is True
+    assert metrics.output_tokens == 42
+    assert captured_payload["stream_options"] == {"include_usage": True}
 
 
 def test_run_benchmark_excludes_warmup_rows_from_returned_measurements():
@@ -132,6 +189,40 @@ def test_run_benchmark_runs_requests_with_requested_concurrency():
     assert max_active == 2
 
 
+def test_run_benchmark_can_vary_prompt_per_request():
+    prompts = []
+
+    def fake_runner(**kwargs):
+        prompts.append(kwargs["prompt"])
+        return RequestMetrics(
+            request_id=kwargs["request_id"],
+            ok=True,
+            ttft_s=0.10,
+            latency_s=0.20,
+            output_tokens=10,
+            error="",
+        )
+
+    run_benchmark(
+        endpoint="http://127.0.0.1:8000/v1/chat/completions",
+        model="dummy",
+        prompt="shared prompt",
+        max_tokens=8,
+        measured_requests=2,
+        warmup_requests=1,
+        concurrency=1,
+        vary_prompts=True,
+        timeout_s=5.0,
+        runner=fake_runner,
+    )
+
+    assert prompts == [
+        "[request 0] shared prompt",
+        "[request 1] shared prompt",
+        "[request 2] shared prompt",
+    ]
+
+
 def test_aggregate_metrics_can_use_wall_time_for_concurrent_throughput():
     rows = [
         RequestMetrics(
@@ -185,3 +276,38 @@ def test_run_measured_benchmark_wall_time_excludes_warmup():
     )
 
     assert wall_time_s < 0.08
+
+
+def test_run_measured_benchmark_varied_prompts_do_not_reuse_warmup_ids():
+    prompts = []
+
+    def fake_runner(**kwargs):
+        prompts.append(kwargs["prompt"])
+        return RequestMetrics(
+            request_id=kwargs["request_id"],
+            ok=True,
+            ttft_s=0.01,
+            latency_s=0.02,
+            output_tokens=5,
+            error="",
+        )
+
+    run_measured_benchmark(
+        endpoint="http://127.0.0.1:8000/v1/chat/completions",
+        model="dummy",
+        prompt="shared prompt",
+        max_tokens=8,
+        measured_requests=2,
+        warmup_requests=2,
+        concurrency=1,
+        vary_prompts=True,
+        timeout_s=5.0,
+        runner=fake_runner,
+    )
+
+    assert prompts == [
+        "[request 0] shared prompt",
+        "[request 1] shared prompt",
+        "[request 2] shared prompt",
+        "[request 3] shared prompt",
+    ]
