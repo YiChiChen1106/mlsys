@@ -44,6 +44,14 @@ With long salted prompts, the tail becomes much worse. At concurrency 32:
 
 This is the interview-relevant link between scheduler and KV cache: even without failures, the scheduler may keep requests waiting because long sequences consume more cache and execution budget.
 
+Time-series metrics made this clearer. In a synthetic_896/output64/concurrency32 run with 96 requests:
+
+- TP=1 max running requests: 32; max waiting requests: 27; p99 TTFT about 5.41 s.
+- TP=2 max running requests: 32; max waiting requests: 29; p99 TTFT about 5.94 s.
+- Both waiting queues were labeled `reason="capacity"`.
+
+This suggests the next scheduler experiment should tune `max_num_seqs` and `max_num_batched_tokens`, because the waiting queue is a direct scheduler signal.
+
 ## Experiment Questions
 
 - At what concurrency does throughput stop improving?

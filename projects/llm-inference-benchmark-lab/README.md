@@ -83,6 +83,7 @@ The first vLLM baseline uses Qwen2.5-7B-Instruct on `pink` with 2 x RTX 4090.
 - KV pressure experiments showed that long prompts at concurrency 32 can push p99 TTFT into the 3-6 s range even with 0% failures.
 - Prefix-cache contrast showed repeated synthetic_768 prompts reducing TTFT from about 170-206 ms to about 36-42 ms.
 - Metrics-backed prefix-cache runs measured about 96-99% hit ratio for repeated prompts and about 2% hit ratio for salted varied prompts.
+- KV pressure time-series showed capacity waiting queues of 27-29 requests during a synthetic_896/output64/concurrency32 run; TP=1 reported about 97% peak KV usage, while TP=2 reported about 15%.
 
 Full results are in `experiments/inference-vllm-baseline-pink.md`.
 

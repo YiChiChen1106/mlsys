@@ -291,6 +291,17 @@ This sweep uses salted varied prompts to reduce prefix-cache reuse. It increases
 
 Takeaway: all requests succeeded, but high concurrency with long sequence budgets turned TTFT from sub-second into multi-second tail latency. This is the scheduler and KV-cache capacity pressure that a cache-system optimization should target.
 
+#### KV Pressure Metrics Time-Series
+
+Before/after snapshots miss gauge peaks because `kv_cache_usage_perc`, running requests, and waiting requests return to idle after the benchmark. This run samples `/metrics` every 0.2 seconds while running `synthetic_896`, `max_tokens=64`, `requests=96`, `concurrency=32`.
+
+| TP Size | Requests | Avg Prompt Tokens | Avg TTFT | P95 TTFT | P99 TTFT | Avg Latency | P99 Latency | Max KV Usage | Max Running | Max Waiting | Max Capacity Waiting | Preemptions |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 96 | 1858.9 | 1.5052 s | 4.8715 s | 5.4089 s | 6.4945 s | 11.0199 s | 97.06% | 32 | 27 | 27 | 0 |
+| 2 | 96 | 1858.9 | 1.8882 s | 5.3270 s | 5.9417 s | 6.7477 s | 11.1395 s | 15.39% | 32 | 29 | 29 | 0 |
+
+Takeaway: both TP=1 and TP=2 showed large waiting queues and multi-second tail TTFT. TP=1 also drove reported KV cache usage close to full, while TP=2 still showed capacity waiting despite much lower reported KV usage. This suggests the slow case is not explained by a single number; scheduler capacity, batch-token limits, and KV cache allocation should be studied together.
+
 #### Prefix Cache Contrast
 
 This sweep compares the same synthetic_768 prompt under repeated prompts, request-id varied prompts, and salted varied prompts.
@@ -382,6 +393,12 @@ Raw CSV summaries:
 - `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp2_prefix_metrics_repeated_delta.csv`
 - `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp2_prefix_metrics_varied_delta.csv`
 - `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp2_prefix_metrics_salted_delta.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp1_synthetic_896_out64_warm2_req96_c32_kv_timeseries_benchmark.csv`
+- `projects/llm-inference-benchmark-lab/results/vllm_qwen25_7b_tp2_synthetic_896_out64_warm2_req96_c32_kv_timeseries_benchmark.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp1_synthetic_896_out64_warm2_req96_c32_kv_timeseries.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp1_synthetic_896_out64_warm2_req96_c32_kv_timeseries_summary.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp2_synthetic_896_out64_warm2_req96_c32_kv_timeseries.csv`
+- `projects/llm-inference-benchmark-lab/results/metrics/vllm_qwen25_7b_tp2_synthetic_896_out64_warm2_req96_c32_kv_timeseries_summary.csv`
 
 #### 0.5B Smoke Test
 
@@ -424,6 +441,8 @@ Raw CSV summaries:
 - Prefix-cache benchmarks and clean prefill benchmarks answer different questions. Prefix-cache tests measure reuse; salted varied prompt tests measure uncached prompt processing.
 - vLLM `/metrics` exposes prefix-cache counters, so hit ratio can be measured directly instead of inferred from TTFT. In the metrics-backed run, repeated prompts had about 96-99% hit ratio, while salted varied prompts were about 2%.
 - TP=1 varied prompts had a partial prefix-cache hit ratio of about 53%, while TP=2 varied prompts were about 1% in the later restarted service. This is a reminder to trust server-side counters over assumptions about prompt text.
+- Gauge metrics need time-series sampling during the benchmark. A before/after snapshot misses queue and KV-cache peaks because the engine returns to idle after the run.
+- In the KV pressure time-series run, both TP=1 and TP=2 reached the configured concurrency of 32 running requests and built capacity waiting queues. TP=1 reported much higher peak KV usage, while TP=2 still had waiting requests despite lower reported KV usage.
 
 ## What I Learned
 

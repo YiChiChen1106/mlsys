@@ -33,6 +33,7 @@ Serving benchmarks should explain the latency-throughput tradeoff of an inferenc
 - KV pressure should be tested with long prompts and high concurrency. If all requests succeed but p95/p99 TTFT becomes seconds, the system is still under meaningful cache/scheduler pressure.
 - Prefix-cache benchmarks should be labeled separately from clean prefill benchmarks. Repeated prompts answer a product/cache-reuse question; salted varied prompts answer an uncached prefill question.
 - When available, collect server-side metrics before and after each run. For vLLM, `prefix_cache_hits_total`, `prefix_cache_queries_total`, `kv_cache_usage_perc`, `num_requests_waiting`, and `num_preemptions_total` turn client-side latency into a more explainable result.
+- Use before/after deltas for counters such as prefix-cache hits. Use time-series sampling for gauges such as KV usage and waiting requests.
 
 ## Interview Sentence
 
@@ -46,6 +47,10 @@ For cache-system experiments, I do not only look for failures. I increase sequen
 
 ```text
 For prefix-cache experiments, I verify cache behavior with vLLM counters instead of assuming from prompt text. I take /metrics snapshots before and after the run, then compute delta(prefix_cache_hits_total) divided by delta(prefix_cache_queries_total). In my run, repeated prompts had about 96-99% hit ratio, while salted varied prompts were about 2%.
+```
+
+```text
+For KV pressure experiments, I sample gauge metrics during the run rather than only before and after. In one vLLM run, p99 TTFT was around 5-6 seconds while max waiting requests reached 27-29. TP=1 also reported about 97% KV usage, while TP=2 showed waiting even with much lower reported KV usage, which points to scheduler capacity and batch-token limits as follow-up variables.
 ```
 
 ## Record Format

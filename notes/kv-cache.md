@@ -39,6 +39,19 @@ KV cache pressure does not have to appear first as an OOM or rejected request. I
 
 This means the cache and scheduler still admitted the requests, but first-token latency became much worse. For cache-system optimization, this is a more useful signal than only checking whether requests fail.
 
+## Time-Series Metrics
+
+Gauge metrics such as `vllm:kv_cache_usage_perc`, `vllm:num_requests_running`, and `vllm:num_requests_waiting` should be sampled while the benchmark is running. A before/after snapshot can miss the peak because the engine returns to idle after requests finish.
+
+In a synthetic_896/output64/concurrency32 run with 96 measured requests:
+
+- TP=1 p99 TTFT was about 5.41 s and peak reported KV usage was about 97.06%.
+- TP=2 p99 TTFT was about 5.94 s and peak reported KV usage was about 15.39%.
+- Both runs reached 32 running requests and built capacity waiting queues of 27-29 requests.
+- No preemptions were reported.
+
+This suggests a useful follow-up: tune scheduler and batching limits, because waiting queues can appear even when reported KV usage is not close to 100%.
+
 ## Prefix Cache
 
 Prefix cache is different from normal KV cache reuse during decode. It reuses prompt-prefix computation across requests with shared prefixes.
