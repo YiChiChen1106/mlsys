@@ -153,6 +153,22 @@ Prefix cache made repeated prompts much faster. Repeated synthetic prompts reach
 I tested KV-cache pressure by combining long prompts with high concurrency. The requests did not fail, but p99 TTFT rose to several seconds and vLLM metrics showed waiting queues. This taught me that cache or scheduler pressure often appears first as tail latency, not as OOM. I also measured prefix-cache behavior using vLLM metrics. Repeated prompts had around 96-99% hit ratio and much lower TTFT, while salted varied prompts had near-zero hit ratio and exposed the uncached prefill cost.
 ```
 
+### 中文面试表达
+
+```text
+我会区分普通 KV cache 和 prefix cache。普通 KV cache 是同一个请求内部的复用：prefill 阶段写入 prompt 的 K/V，decode 阶段每生成一个新 token 都复用历史 K/V，主要提升 decode 速度。Prefix cache 是不同请求之间的复用：如果多个请求有相同的 prompt 前缀，框架可以复用这段前缀的 prefill 计算结果，从而降低 TTFT。
+
+我在 vLLM 实验里专门做了对比。repeated prompt 的 prefix-cache hit ratio 大约 96-99%，TTFT 很低；salted varied prompt 的 hit ratio 只有约 2%，TTFT 明显更高，更接近真实 uncached prefill 成本。这个实验告诉我，prefix cache 是很有价值的优化，但 benchmark 时必须把它和普通 prefill 性能分开，否则容易把缓存命中误认为模型 prefill 本身很快。
+```
+
+### 面试官可能追问
+
+- 普通 KV cache 和 prefix cache 的区别是什么？
+- prefix cache 为什么能降低 TTFT？
+- 什么样的业务场景 prefix cache 收益最大？
+- 为什么 repeated prompt benchmark 可能不可信？
+- 你怎么验证 prefix cache 真的命中了？
+
 ## Story 5: Scheduler Parameter Tradeoff
 
 ### Problem

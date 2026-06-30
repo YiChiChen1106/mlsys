@@ -140,6 +140,57 @@ This suggests a useful follow-up: tune scheduler and batching limits, because wa
 
 Prefix cache is different from normal KV cache reuse during decode. It reuses prompt-prefix computation across requests with shared prefixes.
 
+## Normal KV Cache vs Prefix Cache
+
+These two concepts are related but not the same.
+
+| Concept | Reuse Scope | What It Reuses | Main Benefit |
+| --- | --- | --- | --- |
+| Normal KV cache | Inside one request | Previous tokens in the same sequence | Faster decode |
+| Prefix cache | Across requests | Shared prompt prefix computation | Lower prefill cost and TTFT |
+
+Beginner mental model:
+
+```text
+Normal KV cache:
+same request, later decode tokens reuse earlier tokens
+
+Prefix cache:
+different requests, same prompt prefix reuse already computed prefix
+```
+
+Example:
+
+```text
+Request A: "You are a helpful assistant. Summarize paper A..."
+Request B: "You are a helpful assistant. Summarize paper B..."
+```
+
+Both requests share this prefix:
+
+```text
+"You are a helpful assistant. Summarize"
+```
+
+If prefix cache hits, the server can reuse the computation for the shared prefix instead of prefilling it from scratch again.
+
+This is especially useful for:
+
+- chat systems with the same system prompt,
+- agent workflows with repeated tool instructions,
+- retrieval or summarization templates,
+- batch jobs with common prompt headers.
+
+It is less useful when every request has a completely different prefix.
+
+## Why Prefix Cache Can Mislead Benchmarks
+
+Prefix cache is good for products that really have shared prefixes, but it can accidentally make a prefill benchmark look too good.
+
+If a benchmark repeatedly sends the exact same prompt, TTFT may be measuring prefix-cache hits rather than raw prefill speed.
+
+That is why clean prefill experiments should use varied or salted prompts, and prefix-cache experiments should be labeled separately.
+
 In the vLLM prefix-cache contrast on synthetic_768:
 
 - TP=1 repeated prompt TTFT: about 42 ms.
@@ -163,6 +214,12 @@ Measured examples:
 - TP=2 salted varied: about 1.97% hit ratio.
 
 The TP=1 varied run had about 53.22% hit ratio, while TP=2 varied after service restart had about 1.01%. This is a reminder that server-side counters are more reliable than assumptions about prompt text.
+
+Chinese interview sentence:
+
+```text
+普通 KV cache 和 prefix cache 的复用范围不一样。普通 KV cache 是同一个请求内部，在 decode 阶段复用历史 token 的 K/V，主要加速后续 token 生成。Prefix cache 是不同请求之间复用相同 prompt 前缀的计算结果，主要降低 prefill 成本和 TTFT。我的实验里 repeated prompt 的 prefix-cache hit ratio 达到 96-99%，TTFT 明显更低；而 salted varied prompt 的 hit ratio 只有约 2%，更接近 uncached prefill。因此做 benchmark 时要区分 prefix-cache 场景和纯 prefill 场景，不能把缓存命中误当成模型本身 prefill 很快。
+```
 
 ## Inference Connection
 
