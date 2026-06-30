@@ -2,6 +2,90 @@
 
 KV cache stores the attention keys and values from earlier tokens so the model does not recompute the full prompt at every decode step.
 
+## Beginner Mental Model
+
+An LLM generates text one token at a time. When it generates a new token, it needs to attend to the previous tokens.
+
+Without KV cache, the model would repeatedly redo work for the old tokens:
+
+```text
+step 1: process prompt -> generate token 1
+step 2: process prompt + token 1 again -> generate token 2
+step 3: process prompt + token 1 + token 2 again -> generate token 3
+```
+
+This is wasteful because most of the history did not change.
+
+KV cache avoids this repeated work:
+
+```text
+prefill: process prompt once and store K/V
+decode step 1: read old K/V, compute only the new token's K/V
+decode step 2: read old K/V, compute only the new token's K/V
+decode step 3: read old K/V, compute only the new token's K/V
+```
+
+The simple idea is:
+
+```text
+KV cache = saved attention state for previous tokens
+```
+
+It makes decode much faster, but it consumes GPU memory.
+
+## Why Attention Has K And V
+
+In transformer attention, each token produces three vectors:
+
+```text
+Q = query
+K = key
+V = value
+```
+
+The query asks: "What previous information do I need?"
+
+The keys help decide which previous tokens are relevant.
+
+The values contain the information to mix into the current token representation.
+
+During decode, the old tokens' K and V do not change. So the framework stores them and reuses them for later decode steps.
+
+## Prefill And Decode View
+
+KV cache is created during prefill and extended during decode:
+
+```text
+prefill(prompt tokens)
+-> write K/V for all prompt tokens
+
+decode(new token)
+-> read old K/V
+-> compute K/V for new token
+-> append new K/V to cache
+```
+
+This is why prefill and decode are connected:
+
+- Prefill builds the initial cache.
+- Decode depends on the cache every step.
+- Longer prompts create larger initial cache.
+- Longer outputs keep appending to the cache.
+
+## Why KV Cache Becomes A Systems Problem
+
+For one request, KV cache is easy to understand. For many concurrent requests, it becomes a memory-management problem.
+
+The framework has to answer:
+
+- How many cache blocks can fit in GPU memory?
+- Which requests can be admitted now?
+- Which requests must wait?
+- What happens if a request grows longer than expected?
+- When a request finishes, how quickly can its cache blocks be reused?
+
+This is why inference framework jobs care so much about cache systems and schedulers.
+
 ## Why It Matters
 
 Without KV cache, each generated token would repeatedly process all previous tokens. With KV cache, decode can reuse earlier attention states and only process the newest token.
