@@ -196,6 +196,21 @@ On the dual RTX 4090 `pink` server, GPU0-to-GPU1 topology is `SYS`, not NVLink. 
 - TP=2 had higher long-prompt salted prefill TTFT than TP=1 at the same prompt length.
 - The useful interview framing is: TP can help decode-heavy workloads, but prefill and scheduler behavior may pay communication overhead.
 
+Beginner version:
+
+```text
+TP benefit = split model compute across GPUs
+TP cost    = GPUs must communicate partial results
+```
+
+The speedup depends on whether saved compute is larger than communication overhead. On `pink`, TP=2 helped, but speedup stayed below 2x because the two 4090s communicate through a `SYS` topology rather than NVLink.
+
+Chinese interview sentence:
+
+```text
+Tensor parallel 把同一层模型计算切到多张 GPU 上，可以降低每张卡的计算压力，所以 TP=2 往往能提升 decode throughput。但它不是线性加速，因为每层计算后可能需要跨卡通信，比如 all-reduce。我的双 4090 机器拓扑是 SYS，不是 NVLink，所以通信开销比较明显，最终 TP=2 只有大约 1.5 到 1.7 倍吞吐提升，而不是 2 倍。
+```
+
 ## Prefill vs Decode
 
 - Prefill processes the input prompt and builds KV cache. It mostly shows up in TTFT.

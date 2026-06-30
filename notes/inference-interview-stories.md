@@ -2,6 +2,8 @@
 
 This note turns the vLLM benchmark lab into interview-ready stories.
 
+Interview answers should be Chinese-first. Add English only when needed for specific terms or bilingual practice.
+
 ## Story 1: Benchmark Methodology
 
 ### Problem
@@ -50,6 +52,21 @@ I learned that LLM serving benchmarks need careful methodology. My first vLLM re
 
 Adding a second GPU does not automatically double LLM inference throughput. Tensor parallelism reduces per-GPU compute, but it also adds cross-GPU communication.
 
+### Beginner Explanation
+
+Tensor parallelism means splitting one model layer across multiple GPUs.
+
+For example, a large matrix multiplication can be split so GPU 0 computes one part and GPU 1 computes another part. This reduces the compute burden on each GPU, but the GPUs must exchange partial results. That communication usually happens every layer.
+
+So TP has two sides:
+
+```text
+benefit: less compute per GPU
+cost: cross-GPU communication and synchronization
+```
+
+If the GPUs are connected by NVLink, communication is faster. On the `pink` server, GPU0-GPU1 topology is `SYS`, so communication goes through PCIe/CPU interconnect. This makes communication overhead more visible.
+
 ### What I Did
 
 - Ran Qwen2.5-7B-Instruct with TP=1 on one RTX 4090.
@@ -69,6 +86,22 @@ The speedup stayed below 2x because tensor parallelism adds communication overhe
 ```text
 I compared TP=1 and TP=2 on a dual RTX 4090 server using vLLM. TP=2 improved throughput and tail latency, but the speedup was around 1.5x to 1.7x instead of 2x. The reason is that tensor parallelism reduces per-GPU compute but adds cross-GPU communication every layer. On this server, the GPU topology was SYS rather than NVLink, so communication went through PCIe and the CPU interconnect. That made TP=2 helpful for decode-heavy traffic, but not a free 2x scaling path.
 ```
+
+### 中文面试表达
+
+```text
+我在双 4090 服务器上对比了 vLLM 的 TP=1 和 TP=2。TP=2 确实提升了吞吐和尾延迟，比如 concurrency 16 时吞吐从大约 710 tok/s 提升到 1099 tok/s，p99 latency 也从大约 765 ms 降到 506 ms。但它不是 2 倍加速，而是大概 1.5 到 1.7 倍。
+
+原因是 tensor parallel 一方面把模型计算切到多张 GPU 上，降低了每张卡的计算量；另一方面每一层都可能需要 all-reduce 或同步通信。pink 这台机器两张 4090 的拓扑是 SYS，不是 NVLink，所以跨卡通信要走 PCIe/CPU interconnect，通信开销会抵消一部分计算收益。因此 TP=2 对 decode-heavy workload 有帮助，但不是免费的线性扩展。
+```
+
+### 面试官可能追问
+
+- 为什么 TP=2 不一定比 TP=1 好？
+- 为什么 NVLink 和 PCIe/SYS 拓扑会影响 TP 扩展效率？
+- TP 对 prefill 和 decode 的收益一样吗？
+- 为什么 TP=2 后每张 GPU 的显存占用没有简单减半？
+- `all-reduce` 在 tensor parallel 里为什么会出现？
 
 ## Story 3: Prefill vs Decode
 
