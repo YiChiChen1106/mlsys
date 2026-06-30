@@ -25,6 +25,156 @@ vs
 limited GPU memory
 ```
 
+## Request Lifecycle, Beginner Version
+
+An LLM inference framework is the system layer between a model checkpoint and real user traffic. A checkpoint only stores model weights. The inference framework turns those weights into an online service.
+
+A single request usually goes through this path:
+
+```text
+HTTP request
+-> tokenizer
+-> request queue
+-> scheduler
+-> prefill
+-> KV cache write
+-> decode loop
+-> sampling
+-> detokenizer
+-> streaming response
+```
+
+### 1. HTTP Request
+
+The user or benchmark client sends a request to the model server. vLLM exposes an OpenAI-compatible API, so the request often looks like a normal `/v1/chat/completions` or `/v1/completions` call.
+
+At this layer, the server sees fields such as:
+
+- model name,
+- prompt or messages,
+- `max_tokens`,
+- temperature and sampling options,
+- whether streaming is enabled.
+
+### 2. Tokenizer
+
+The model does not directly read human text. The tokenizer converts text into token ids.
+
+Example mental model:
+
+```text
+"KV cache is useful"
+-> [token_1, token_2, token_3, ...]
+```
+
+For performance work, token count matters more than character count. A prompt that looks short to a human may still become many tokens, depending on language, formatting, and tokenizer behavior.
+
+### 3. Request Queue
+
+After tokenization, the request waits in a queue if the engine cannot run it immediately.
+
+This is why TTFT is not only model compute time. TTFT can include:
+
+- queueing delay,
+- scheduler admission delay,
+- prefill compute,
+- first decode step,
+- networking and Python overhead.
+
+### 4. Scheduler
+
+The scheduler decides which requests should run in the next engine step.
+
+It has to balance several goals:
+
+- keep the GPU busy,
+- avoid running out of KV cache memory,
+- avoid starving waiting requests,
+- batch compatible requests together,
+- control tail latency.
+
+In an LLM server, scheduling is hard because each request has a different prompt length, output length, arrival time, and remaining decode length.
+
+### 5. Prefill
+
+Prefill is the phase that processes the input prompt.
+
+If the prompt has 1,000 tokens, prefill computes the model forward pass over those prompt tokens and builds the initial KV cache. This phase is relatively parallel because the full prompt is already known.
+
+Prefill mainly affects TTFT:
+
+```text
+longer prompt -> more prefill work -> higher TTFT
+```
+
+This is why prompt-length experiments should track server-reported `prompt_tokens`, not only labels like short, medium, or long.
+
+### 6. KV Cache Write
+
+During prefill, each transformer layer produces attention keys and values for the prompt tokens. The server stores these tensors in GPU memory as KV cache.
+
+The point of KV cache is:
+
+```text
+reuse past token attention state during decode
+instead of recomputing the whole history every step
+```
+
+KV cache is a memory-for-speed tradeoff. It makes decode much faster, but it consumes GPU memory proportional to active sequence count and sequence length.
+
+### 7. Decode Loop
+
+Decode generates new tokens one at a time.
+
+The model is autoregressive:
+
+```text
+prompt -> token 1
+prompt + token 1 -> token 2
+prompt + token 1 + token 2 -> token 3
+...
+```
+
+This means output length matters a lot. If one request generates 256 tokens, the server must run many decode iterations.
+
+Decode mainly affects TPOT and total latency:
+
+```text
+longer output -> more decode steps -> higher end-to-end latency
+```
+
+### 8. Sampling
+
+After each decode forward pass, the model produces logits. The sampling logic chooses the next token according to settings such as temperature, top-p, top-k, or greedy decoding.
+
+For framework performance, sampling is usually not the largest compute cost compared with transformer execution, but it is part of the per-token serving loop.
+
+### 9. Detokenizer And Streaming Response
+
+The generated token ids are converted back into text. If streaming is enabled, the server sends partial text chunks back as tokens are generated.
+
+Streaming improves user experience because the user sees the first token early, even if the full answer takes longer.
+
+This is why TTFT matters so much for chat products.
+
+## The Three Latency Questions
+
+For every serving result, ask three separate questions:
+
+```text
+How long until the first token?        -> TTFT
+How fast are later tokens generated?   -> TPOT
+How long until the request is done?     -> latency
+```
+
+A useful approximate formula is:
+
+```text
+end_to_end_latency ~= TTFT + output_tokens * TPOT
+```
+
+This is not exact, but it is a good mental model for interviews and experiments.
+
 ## Key Concepts
 
 - Prefill: processes the input prompt and builds the initial KV cache.
