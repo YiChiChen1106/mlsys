@@ -12,6 +12,91 @@ Serving benchmarks should explain the latency-throughput tradeoff of an inferenc
 - GPU memory peak.
 - Failure rate.
 
+## Client Metrics vs Server Metrics
+
+Client-side benchmark metrics show what the user experiences:
+
+- TTFT,
+- TPOT,
+- end-to-end latency,
+- p50/p95/p99 latency,
+- output tokens per second,
+- failure rate.
+
+These are necessary, but they do not fully explain why the system is slow.
+
+Server-side metrics show what the inference engine is doing internally:
+
+- KV cache usage,
+- number of running requests,
+- number of waiting requests,
+- waiting reason,
+- preemptions,
+- prefix cache hits and queries.
+
+The beginner rule is:
+
+```text
+client metrics tell you what happened
+server metrics help explain why it happened
+```
+
+For example:
+
+```text
+high TTFT
+could be queueing
+could be long prefill
+could be waiting for KV cache capacity
+could be a large batch step
+```
+
+Without server metrics, these cases can look similar from the client side.
+
+## Counters vs Gauges
+
+Server metrics usually include two kinds of values.
+
+Counters only increase over time:
+
+- prefix cache queries,
+- prefix cache hits,
+- total preemptions.
+
+For counters, use before/after deltas:
+
+```text
+hit_ratio = delta(prefix_cache_hits_total) / delta(prefix_cache_queries_total)
+```
+
+Gauges are point-in-time values:
+
+- current KV cache usage,
+- current running requests,
+- current waiting requests.
+
+For gauges, before/after snapshots are not enough. The value may return to idle after the benchmark ends.
+
+Use time-series sampling during the benchmark:
+
+```text
+sample /metrics every 0.2 seconds
+record max KV usage, max running, max waiting
+```
+
+This is why the KV pressure experiment needed `metrics_timeseries.py`, not only `metrics_snapshot.py`.
+
+## Profiling Levels
+
+There are several levels of performance investigation:
+
+1. Client benchmark: user-visible latency and throughput.
+2. Server metrics: scheduler, KV cache, waiting queue, prefix cache, preemptions.
+3. Framework logs: request admission, warnings, errors, initialization behavior.
+4. PyTorch profiler / Nsight Systems: GPU kernels, CPU overhead, communication, synchronization.
+
+For the current project, the first two levels are already useful. Nsight and `torch.profiler` are natural next steps after the benchmark stories are clear.
+
 ## Variables To Sweep
 
 - Framework: vLLM, SGLang, llama.cpp.
@@ -51,6 +136,14 @@ For prefix-cache experiments, I verify cache behavior with vLLM counters instead
 
 ```text
 For KV pressure experiments, I sample gauge metrics during the run rather than only before and after. In one vLLM run, p99 TTFT was around 5-6 seconds while max waiting requests reached 27-29. TP=1 also reported about 97% KV usage, while TP=2 showed waiting even with much lower reported KV usage, which points to scheduler capacity and batch-token limits as follow-up variables.
+```
+
+Chinese interview sentence:
+
+```text
+我做推理 benchmark 时会把客户端指标和服务端指标分开看。客户端指标，比如 TTFT、TPOT、p95/p99 latency 和吞吐，告诉我用户看到的性能现象；服务端 metrics，比如 KV cache usage、running/waiting requests、preemptions、prefix cache hit ratio，帮助解释为什么会慢。
+
+对于 counter 类指标，比如 prefix_cache_hits_total 和 prefix_cache_queries_total，我会用前后差值计算 hit ratio。对于 gauge 类指标，比如 kv_cache_usage_perc 和 num_requests_waiting，前后 snapshot 不够，因为 benchmark 结束后它们会回到 idle，所以我会在压测过程中做 time-series 采样。我的 KV pressure 实验里就是通过 time-series 看到了 27-29 个 waiting requests 和 TP=1 约 97% 的 KV usage peak。
 ```
 
 ## Record Format

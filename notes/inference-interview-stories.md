@@ -191,3 +191,38 @@ Increasing `max_num_batched_tokens` reduced max waiting and p99 latency, and imp
 ```text
 I swept vLLM's max_num_batched_tokens on a fixed long-prompt high-concurrency workload. Larger batched-token budgets reduced waiting queues, improved TPOT, and lowered p99 latency, but they also worsened average TTFT. On TP=1, the largest setting introduced preemptions. So I would describe max_num_batched_tokens as a scheduler tradeoff knob rather than a monotonic optimization. It changes how much prefill/decode work the engine admits per batch, which shifts latency between first-token delay, decode progress, and tail completion time.
 ```
+
+## Story 6: Metrics And Profiling
+
+### Problem
+
+Client-side latency can tell me that a request is slow, but not why it is slow. For inference framework work, I need server-side metrics to connect latency symptoms to scheduler, KV cache, prefix cache, and preemption behavior.
+
+### What I Did
+
+- Added metrics snapshot collection around vLLM benchmarks.
+- Computed prefix-cache hit ratio from counter deltas.
+- Added metrics time-series sampling during long-running pressure tests.
+- Tracked KV cache usage, running requests, waiting requests, capacity waiting, and preemptions.
+
+### Result
+
+The prefix-cache experiment used counter deltas to show repeated prompts had about 96-99% hit ratio, while salted varied prompts were about 2%.
+
+The KV pressure experiment used time-series gauge sampling to show that p99 TTFT around 5-6 seconds came with waiting queues of 27-29 requests. TP=1 also reached about 97% peak KV usage.
+
+### 中文面试表达
+
+```text
+我做推理 benchmark 时不会只看客户端 latency。客户端指标，比如 TTFT、TPOT、p95/p99 latency 和吞吐，能告诉我用户侧发生了什么；但如果要分析推理框架，就需要服务端 metrics 来解释原因，比如 KV cache usage、running/waiting requests、preemptions、prefix cache hits 和 queries。
+
+我会区分 counter 和 gauge。对于 prefix_cache_hits_total、prefix_cache_queries_total 这种 counter，我用前后差值算 hit ratio。对于 kv_cache_usage_perc、num_requests_waiting 这种 gauge，我不会只做前后 snapshot，因为压测结束后数值会回到 idle，容易错过峰值。所以我写了 time-series 采样脚本，在 benchmark 过程中持续采 `/metrics`。在 KV pressure 实验里，我就是这样观察到 p99 TTFT 到 5-6 秒时，waiting requests 峰值达到 27-29，TP=1 的 KV usage peak 接近 97%。
+```
+
+### 面试官可能追问
+
+- 客户端 latency 和服务端 metrics 分别解决什么问题？
+- counter 和 gauge 的区别是什么？
+- 为什么 gauge 需要 time-series 采样？
+- 如果 TTFT 很高，你会看哪些 metrics？
+- 什么时候需要进一步用 Nsight 或 torch.profiler？
