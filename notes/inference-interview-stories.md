@@ -226,3 +226,35 @@ The KV pressure experiment used time-series gauge sampling to show that p99 TTFT
 - 为什么 gauge 需要 time-series 采样？
 - 如果 TTFT 很高，你会看哪些 metrics？
 - 什么时候需要进一步用 Nsight 或 torch.profiler？
+
+## Story 7: Context-Length Admission
+
+### Problem
+
+In LLM serving, a request can be rejected even if the prompt itself fits, because the server must reserve room for the requested output tokens.
+
+### What I Did
+
+- Served Qwen2.5-7B-Instruct with `--max-model-len 2048`.
+- Used a synthetic prompt with 1968 server-reported prompt tokens.
+- Tested requested output lengths of 80 and 81 tokens.
+
+### Result
+
+- 1968 prompt tokens + 80 requested output tokens = 2048, accepted.
+- 1968 prompt tokens + 81 requested output tokens = 2049, rejected.
+
+### 中文面试表达
+
+```text
+我在 vLLM 里验证过 context-length admission。max_model_len 限制的是单个请求的总序列长度，不是只限制 prompt 长度。服务端在生成前不知道模型会不会提前停止，所以必须按 requested max_tokens 做预算。
+
+我的实验里 max_model_len=2048，一个 synthetic prompt 的 server-reported prompt_tokens 是 1968。当 requested max_tokens=80 时，总预算是 1968+80=2048，请求成功；当 requested max_tokens=81 时，总预算变成 2049，超过 max_model_len，所以请求被拒绝。这个规则也和 KV cache 管理相关，因为每个可能生成的位置都需要上下文和 cache 容量。
+```
+
+### 面试官可能追问
+
+- 为什么看 requested max_tokens，而不是实际生成 token 数？
+- prompt 本身没超过 max_model_len，为什么仍然可能被拒？
+- 这个规则和 KV cache 有什么关系？
+- 为什么 benchmark 要记录 server-reported prompt_tokens？

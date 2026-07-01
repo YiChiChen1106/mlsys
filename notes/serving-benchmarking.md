@@ -146,6 +146,12 @@ Chinese interview sentence:
 对于 counter 类指标，比如 prefix_cache_hits_total 和 prefix_cache_queries_total，我会用前后差值计算 hit ratio。对于 gauge 类指标，比如 kv_cache_usage_perc 和 num_requests_waiting，前后 snapshot 不够，因为 benchmark 结束后它们会回到 idle，所以我会在压测过程中做 time-series 采样。我的 KV pressure 实验里就是通过 time-series 看到了 27-29 个 waiting requests 和 TP=1 约 97% 的 KV usage peak。
 ```
 
+Context-length interview sentence:
+
+```text
+我会检查 prompt_tokens + requested max_tokens 是否小于等于 max_model_len，因为服务端 admission control 要按请求的最大生成长度做预算，而不是按最后实际生成了多少 token。比如我在 vLLM 里设置 max_model_len=2048，一个 1968-token prompt 请求 80 个 output token 可以通过，1968+81=2049 就会被拒绝。这也是 benchmark 里必须记录 server-reported prompt_tokens 的原因。
+```
+
 ## Record Format
 
 Each experiment note should include:

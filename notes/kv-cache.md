@@ -113,6 +113,68 @@ In the `pink` vLLM baseline, the server used `--max-model-len 2048`. A 1968-toke
 
 This is related to KV cache because every accepted token position needs cache space. The server cannot assume the model will stop early; it has to admit based on the requested maximum.
 
+### Beginner Explanation
+
+`max_model_len` is the maximum sequence length that the serving engine allows for one request.
+
+For a generation request, the sequence is:
+
+```text
+input prompt tokens + generated output tokens
+```
+
+So the server has to check the total possible sequence length before starting:
+
+```text
+prompt_tokens + requested max_tokens
+```
+
+The important detail is `requested max_tokens`, not actual generated tokens.
+
+Why? Because before generation starts, the server does not know whether the model will stop early. If the user requests up to 512 output tokens, the engine must assume the sequence may grow by 512 tokens and reserve/admit capacity accordingly.
+
+Example from the experiment:
+
+```text
+max_model_len = 2048
+prompt_tokens = 1968
+```
+
+Case 1:
+
+```text
+requested max_tokens = 80
+total budget = 1968 + 80 = 2048
+result = accepted
+```
+
+Case 2:
+
+```text
+requested max_tokens = 81
+total budget = 1968 + 81 = 2049
+result = rejected
+```
+
+Even if the model might have stopped after fewer than 81 tokens, the server cannot rely on that. Admission control uses the requested budget.
+
+### Why It Matters For Systems
+
+This rule protects the server from accepting requests that may exceed:
+
+- model context length,
+- KV cache capacity,
+- scheduler sequence budget,
+- memory planning assumptions.
+
+It also means users can get rejected by asking for too much output even when their prompt alone fits.
+
+Chinese interview sentence:
+
+```text
+max_model_len 是单个请求允许的最大序列长度，序列长度不是只看 prompt，而是 prompt_tokens 加上请求的 max_tokens。服务端在生成前不知道模型会不会提前停止，所以 admission control 必须按 requested max_tokens 做最坏情况预算。我的实验里 max_model_len=2048，1968-token prompt 加 80 个 requested output token 正好等于 2048，所以成功；加 81 个就变成 2049，超过限制被 vLLM 拒绝。这个规则和 KV cache 管理有关，因为每个可能的位置都需要预留上下文和 cache 容量。
+```
+
 ## Pressure Symptoms
 
 KV cache pressure does not have to appear first as an OOM or rejected request. In the vLLM baseline, long salted prompts at concurrency 32 all succeeded, but TTFT moved into multi-second territory:
