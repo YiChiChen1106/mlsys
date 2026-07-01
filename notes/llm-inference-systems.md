@@ -186,6 +186,115 @@ This is not exact, but it is a good mental model for interviews and experiments.
 - Tensor parallelism: splits model computation across GPUs.
 - Quantization: reduces memory footprint and sometimes improves throughput.
 
+## What vLLM Is
+
+vLLM is an LLM inference serving framework. It is not the model itself.
+
+The model checkpoint stores weights:
+
+```text
+Qwen2.5-7B-Instruct = model weights + tokenizer/config
+```
+
+vLLM turns those weights into a service:
+
+```text
+model checkpoint
+-> OpenAI-compatible API server
+-> tokenizer
+-> scheduler
+-> KV cache manager
+-> model executor / GPU workers
+-> streaming response
+-> metrics
+```
+
+Beginner mental model:
+
+```text
+model = brain weights
+vLLM = serving system around the brain
+```
+
+### Main Components
+
+OpenAI-compatible API server:
+
+- receives `/v1/chat/completions` or `/v1/completions` requests,
+- parses sampling parameters,
+- streams generated tokens back to clients.
+
+Tokenizer:
+
+- converts text into token ids,
+- converts generated token ids back into text.
+
+Scheduler:
+
+- decides which requests run now,
+- batches prefill and decode work,
+- controls waiting queues and admission,
+- interacts with KV cache capacity.
+
+KV cache manager / PagedAttention:
+
+- stores K/V tensors for active sequences,
+- manages cache blocks in GPU memory,
+- reuses cache during decode,
+- reduces memory waste compared with naive contiguous allocation.
+
+Model executor / workers:
+
+- run the transformer forward pass on GPU,
+- execute prefill and decode steps,
+- use tensor parallelism when configured.
+
+Metrics:
+
+- expose internal state through `/metrics`,
+- allow debugging of prefix cache, waiting queues, KV usage, and preemptions.
+
+### PagedAttention, Beginner Version
+
+PagedAttention is vLLM's key idea for KV cache memory management.
+
+Without a paged design, a serving system may reserve large contiguous KV cache regions for each sequence. That can waste memory because requests have different lengths and may stop early.
+
+PagedAttention uses a page/block-style idea:
+
+```text
+sequence tokens
+-> stored in KV cache blocks
+-> blocks can be allocated as needed
+```
+
+Beginner analogy:
+
+```text
+Naive KV allocation = give each request one huge notebook in advance
+PagedAttention = give each request pages as it grows
+```
+
+This helps vLLM support more concurrent sequences with less KV cache fragmentation and waste.
+
+### Why vLLM Was Useful For This Project
+
+vLLM was a good first framework because it provides:
+
+- Docker image for reproducible setup,
+- OpenAI-compatible API for simple benchmarking,
+- continuous batching,
+- PagedAttention / KV cache management,
+- tensor parallel serving,
+- prefix cache,
+- `/metrics` for observability.
+
+Chinese interview sentence:
+
+```text
+vLLM 不是模型本身，而是 LLM 推理服务框架。模型 checkpoint 只提供权重和 tokenizer，vLLM 负责把它变成可服务的在线系统，包括 OpenAI-compatible API server、tokenization、scheduler、KV cache 管理、PagedAttention、GPU worker/model executor、streaming response 和 metrics。它的核心价值是通过 continuous batching 和 PagedAttention 提高吞吐和 KV cache 利用率，同时提供 metrics 帮助分析 scheduler 和 cache 行为。
+```
+
 ## TP=1 vs TP=2 Mental Model
 
 Tensor parallelism can improve decode throughput because each GPU handles part of the model computation. It is not a free 2x speedup because every layer may introduce cross-GPU communication.

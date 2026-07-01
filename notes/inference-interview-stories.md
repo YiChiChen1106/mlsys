@@ -258,3 +258,45 @@ In LLM serving, a request can be rejected even if the prompt itself fits, becaus
 - prompt 本身没超过 max_model_len，为什么仍然可能被拒？
 - 这个规则和 KV cache 有什么关系？
 - 为什么 benchmark 要记录 server-reported prompt_tokens？
+
+## Story 8: What vLLM Does
+
+### Problem
+
+A model checkpoint is not enough to serve real traffic. An inference framework must handle APIs, batching, scheduling, KV cache management, GPU execution, streaming, and observability.
+
+### Beginner Explanation
+
+vLLM is not a model. It is a serving framework around a model.
+
+```text
+model checkpoint = weights
+vLLM = serving system
+```
+
+Important pieces:
+
+- OpenAI-compatible API server,
+- tokenizer and detokenizer,
+- scheduler and continuous batching,
+- KV cache manager and PagedAttention,
+- GPU model executor / workers,
+- tensor parallel support,
+- prefix cache,
+- `/metrics` observability.
+
+### 中文面试表达
+
+```text
+vLLM 不是模型本身，而是 LLM 推理服务框架。模型 checkpoint 只提供权重、tokenizer 和 config；vLLM 负责把它变成在线服务，包括 OpenAI-compatible API server、tokenization、scheduler、continuous batching、KV cache 管理、PagedAttention、GPU worker/model executor、streaming response 和 metrics。
+
+我理解 vLLM 的核心价值有两块：一是调度和 continuous batching，让多请求并发时 GPU 更忙、吞吐更高；二是 PagedAttention/KV cache 管理，把 KV cache 按 block/page 方式管理，减少长短请求混合时的显存浪费和碎片。再加上 `/metrics`，可以观察 waiting requests、KV usage、prefix cache hit ratio 和 preemptions，方便做 scheduler 和 cache system 优化。
+```
+
+### 面试官可能追问
+
+- vLLM 和模型 checkpoint 的区别是什么？
+- vLLM 为什么要做 continuous batching？
+- PagedAttention 解决了什么问题？
+- vLLM 的 `/metrics` 对性能优化有什么用？
+- vLLM 和 SGLang 的侧重点可能有什么不同？
