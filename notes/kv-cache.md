@@ -295,6 +295,46 @@ requests arrive
 -> finished requests release blocks
 ```
 
+## PagedAttention And KV Blocks
+
+PagedAttention is vLLM's solution to KV cache memory management for many variable-length sequences.
+
+The important idea:
+
+```text
+sequence logical blocks
+-> block table
+-> physical KV cache blocks
+```
+
+The sequence can be logically continuous even if its KV cache blocks are physically scattered in GPU memory.
+
+Example:
+
+```text
+logical block 0 -> physical block 12
+logical block 1 -> physical block 5
+logical block 2 -> physical block 31
+```
+
+During attention, vLLM uses the block table to fetch the correct K/V blocks.
+
+Why it matters for cache systems:
+
+- Variable-length requests do not need one large contiguous allocation.
+- Decode can append new KV blocks as a sequence grows.
+- Finished requests release their physical blocks back to the allocator.
+- Memory waste is reduced because only the last block may be partially unused.
+- Prefix sharing can reuse existing blocks across requests.
+
+For scheduler work, block availability becomes an admission signal. If enough physical KV blocks are not available, new requests may wait even before outright OOM.
+
+Chinese interview sentence:
+
+```text
+PagedAttention 把 KV cache 管理成 block/page。每个请求的序列在逻辑上是连续的，但实际 K/V 可以分散存放在不同物理 block 里，框架用 block table 做映射。这样请求不需要预留一大段连续 KV cache，而是随着 decode 增长按需分配 block；请求结束后 block 归还。它减少了变长请求带来的显存浪费和碎片，也让 scheduler 可以根据可用 KV block 做 admission 和 waiting 判断。
+```
+
 ## Questions For Experiments
 
 - How much memory is used before and after a request starts decoding?

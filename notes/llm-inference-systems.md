@@ -277,6 +277,61 @@ PagedAttention = give each request pages as it grows
 
 This helps vLLM support more concurrent sequences with less KV cache fragmentation and waste.
 
+### PagedAttention, Slightly Deeper
+
+PagedAttention is inspired by operating-system virtual memory.
+
+The key idea is to separate:
+
+```text
+logical token positions in a sequence
+from
+physical KV cache blocks in GPU memory
+```
+
+Each request sees its sequence as a logical list of tokens:
+
+```text
+token 0, token 1, token 2, ...
+```
+
+vLLM groups those token positions into logical blocks:
+
+```text
+logical block 0: tokens 0-15
+logical block 1: tokens 16-31
+logical block 2: tokens 32-47
+...
+```
+
+The physical KV cache memory does not have to be contiguous. A block table maps logical blocks to physical blocks:
+
+```text
+logical block 0 -> physical block 7
+logical block 1 -> physical block 2
+logical block 2 -> physical block 19
+```
+
+During attention, the kernel uses this block table to find the K/V tensors for the sequence.
+
+Why this helps:
+
+- A request can grow by allocating new blocks as decode continues.
+- The system does not need to reserve one large contiguous region up front.
+- When a request finishes, its blocks can be returned to the free pool.
+- Wasted memory is mostly limited to unused slots in the last block.
+- Shared prefixes can reuse physical blocks across sequences, with copy-on-write when needed.
+
+This is why PagedAttention is both an attention execution idea and a KV cache memory-management idea.
+
+The tradeoff is that attention needs an extra indirection through the block table, and the kernels must be written to gather K/V from block locations. vLLM pays this complexity to improve serving throughput under many variable-length requests.
+
+Chinese interview sentence:
+
+```text
+PagedAttention 的核心不是改变 Transformer attention 的数学定义，而是改变 KV cache 的内存管理方式。它借鉴操作系统分页思想，把每个序列的 KV cache 切成固定大小的 block，用 block table 把逻辑 token block 映射到 GPU 显存里的物理 KV block。这样每个请求不需要提前分配一大段连续 cache，而是随着序列增长按需分配 block；请求结束后 block 可以回收到 free pool。这样能减少长短请求混合时的显存浪费和碎片，也方便共享 prefix cache。代价是 attention kernel 需要通过 block table 间接访问 K/V，但换来的是更高的并发承载能力和 KV cache 利用率。
+```
+
 ### Why vLLM Was Useful For This Project
 
 vLLM was a good first framework because it provides:

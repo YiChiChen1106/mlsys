@@ -300,3 +300,46 @@ vLLM 不是模型本身，而是 LLM 推理服务框架。模型 checkpoint 只�
 - PagedAttention 解决了什么问题？
 - vLLM 的 `/metrics` 对性能优化有什么用？
 - vLLM 和 SGLang 的侧重点可能有什么不同？
+
+## Story 9: PagedAttention
+
+### Problem
+
+In LLM serving, KV cache can dominate GPU memory. Requests have different prompt lengths and output lengths, so reserving large contiguous KV regions can waste memory and limit concurrency.
+
+### Beginner Explanation
+
+PagedAttention manages KV cache like pages or blocks.
+
+```text
+logical sequence tokens
+-> logical blocks
+-> block table
+-> physical KV cache blocks
+```
+
+The request sees a continuous sequence, but the physical KV blocks in GPU memory do not have to be contiguous.
+
+### Why It Helps
+
+- Allocates KV blocks on demand as sequences grow.
+- Reduces memory waste from over-reserving large contiguous regions.
+- Releases blocks when requests finish.
+- Limits waste mostly to the last partially filled block.
+- Makes prefix sharing easier because physical blocks can be reused.
+
+### 中文面试表达
+
+```text
+PagedAttention 的核心不是改 attention 的数学公式，而是改 KV cache 的内存管理方式。它借鉴操作系统分页思想，把每个序列的 KV cache 切成固定大小的 block，通过 block table 把逻辑 token block 映射到 GPU 显存里的物理 KV block。这样序列在逻辑上是连续的，但物理存储可以不连续。
+
+这样做的好处是，请求不需要一开始就预留一大段连续 KV cache，而是随着 decode 增长按需分配 block；请求结束后 block 可以归还；显存浪费主要限制在最后一个没填满的 block。对于长短请求混合、高并发 serving，这能提高 KV cache 利用率，也让 scheduler 能根据可用 block 做 admission 和 waiting 决策。
+```
+
+### 面试官可能追问
+
+- PagedAttention 和普通 attention 的区别是什么？
+- 为什么说它像操作系统分页？
+- block table 是做什么的？
+- 它怎么减少 KV cache 碎片和浪费？
+- 它和 prefix cache 有什么关系？
