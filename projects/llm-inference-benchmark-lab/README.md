@@ -34,6 +34,9 @@ This project should become a public GitHub portfolio artifact and a practical no
 
 - Repeat the benchmark matrix with SGLang.
 - Compare scheduler and prefix-cache oriented behavior.
+- Start with a smoke run on `pink` using the local Qwen2.5-7B-Instruct model.
+- Keep the first matrix small: short-prompt concurrency, synthetic salted prefill, output-length decode, and repeated-vs-salted prefix reuse.
+- See `experiments/inference-sglang-baseline-pink.md`.
 
 ### M3: llama.cpp Baseline
 
@@ -86,6 +89,23 @@ The first vLLM baseline uses Qwen2.5-7B-Instruct on `pink` with 2 x RTX 4090.
 - KV pressure time-series showed capacity waiting queues of 27-29 requests during a synthetic_896/output64/concurrency32 run; TP=1 reported about 97% peak KV usage, while TP=2 reported about 15%.
 
 Full results are in `experiments/inference-vllm-baseline-pink.md`.
+
+## Next SGLang Plan
+
+The next framework comparison is SGLang on the same `pink` machine and the same local model path:
+
+```text
+/mnt/hdd/users/cychi/hf_models/Qwen2.5-7B-Instruct
+```
+
+The first SGLang experiment should answer:
+
+- Can SGLang serve the same local model through an OpenAI-compatible API?
+- Can the existing benchmark client target SGLang by changing base URL?
+- How do TTFT, TPOT, throughput, and prefix-heavy cases compare with vLLM?
+- What metrics does SGLang expose for scheduler/cache analysis?
+
+Full plan: `experiments/inference-sglang-baseline-pink.md`.
 
 ## Working Notes
 
