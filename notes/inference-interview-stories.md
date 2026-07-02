@@ -343,3 +343,57 @@ PagedAttention 的核心不是改 attention 的数学公式，而是改 KV cache
 - block table 是做什么的？
 - 它怎么减少 KV cache 碎片和浪费？
 - 它和 prefix cache 有什么关系？
+
+## Story 10: vLLM vs SGLang
+
+### Problem
+
+Different inference frameworks may expose similar serving APIs, but their design emphasis can be different. For an inference framework role, I should be able to explain why I started with vLLM and why SGLang is a natural next framework to study.
+
+### Beginner Explanation
+
+Both vLLM and SGLang are high-performance LLM serving frameworks. Both care about batching, KV cache, multi-GPU execution, prefix caching, and serving throughput.
+
+The beginner distinction:
+
+```text
+vLLM = general high-throughput LLM serving engine
+SGLang = serving/runtime system with strong structured generation and prefix-reuse focus
+```
+
+### What I Have Done
+
+- Used vLLM first because it has an OpenAI-compatible server, Docker image, PagedAttention, continuous batching, tensor parallel, prefix cache, and `/metrics`.
+- Benchmarked vLLM on `pink` with Qwen2.5-7B-Instruct.
+- Measured TTFT, TPOT, latency, throughput, KV pressure, prefix-cache hit ratio, and scheduler knobs.
+
+### Next Natural Step
+
+Run SGLang on the same model and server, then compare:
+
+- same benchmark client flow,
+- TTFT/TPOT/latency/throughput,
+- prefix-heavy vs salted varied prompts,
+- scheduler/KV cache metrics if available,
+- behavior under long prompt and high concurrency.
+
+### 中文面试表达
+
+```text
+我会把 vLLM 和 SGLang 都看成高性能 LLM serving framework，但侧重点不完全一样。vLLM 更像通用高吞吐 serving engine，核心亮点是 PagedAttention、continuous batching、OpenAI-compatible API、tensor parallel、prefix cache 和 metrics，所以我先用它搭了 benchmark lab，系统测 TTFT、TPOT、吞吐、KV pressure 和 scheduler 参数。
+
+SGLang 也支持高性能 serving，但它更强调结构化生成、程序化 LLM workflow 和 prefix-heavy 场景。它的 RadixAttention 会把可复用的 KV cache 前缀组织到 radix tree 里，方便跨请求和复杂 workflow 复用共享前缀。简单说，vLLM 的 PagedAttention 更偏 KV cache 存储管理，SGLang 的 RadixAttention 更偏共享前缀复用。下一步我会在同一台双 4090 机器上跑 SGLang，用同样 workload 对比 prefix cache、TTFT、TPOT 和 scheduler 行为。
+```
+
+### 面试官可能追问
+
+- vLLM 和 SGLang 都能 serving，为什么还要比较？
+- PagedAttention 和 RadixAttention 的区别是什么？
+- 什么 workload 更适合 SGLang？
+- 如果让你评估一个新推理框架，你会怎么设计 benchmark？
+- vLLM 已经有 prefix cache，SGLang 的 RadixAttention还有什么值得学？
+
+Sources:
+
+- vLLM documentation: https://docs.vllm.ai/
+- SGLang documentation: https://docs.sglang.ai/

@@ -389,6 +389,91 @@ Tensor parallel 把同一层模型计算切到多张 GPU 上，可以降低每�
 3. llama.cpp: useful comparison point for local and quantized inference.
 4. TensorRT-LLM: later, after the serving and scheduling concepts are clearer.
 
+## vLLM vs SGLang
+
+Both vLLM and SGLang are high-performance LLM serving frameworks. They overlap on many runtime features:
+
+- OpenAI-compatible serving,
+- continuous batching,
+- KV cache management,
+- prefix caching,
+- multi-GPU parallelism,
+- chunked prefill,
+- quantization and optimized kernels.
+
+The useful beginner distinction is:
+
+```text
+vLLM:
+general-purpose high-throughput LLM serving engine
+
+SGLang:
+serving framework/runtime with strong focus on structured generation,
+prefix reuse, and programmatic LLM workflows
+```
+
+### vLLM Mental Model
+
+vLLM is a strong default choice when the main goal is:
+
+- serve a model through an OpenAI-compatible API,
+- maximize throughput for multi-user traffic,
+- use PagedAttention for KV cache efficiency,
+- benchmark scheduler, KV cache, TP, prefix cache, and metrics behavior.
+
+For this project, vLLM is a good first framework because the API is easy to benchmark and its runtime metrics expose the scheduler/cache behavior we care about.
+
+### SGLang Mental Model
+
+SGLang is also a serving framework, but it is especially interesting when requests have reusable structure.
+
+Examples:
+
+- repeated system prompts,
+- agent workflows with shared tool instructions,
+- structured output generation,
+- multi-step LLM programs,
+- branching/parallel prompt flows,
+- prefix-heavy workloads.
+
+SGLang's RadixAttention focuses on automatic KV cache reuse through a radix-tree-style prefix cache. The point is to avoid recomputing common prefixes across requests and across structured generation workflows.
+
+### RadixAttention, Beginner Version
+
+RadixAttention is SGLang's prefix-cache idea.
+
+Beginner mental model:
+
+```text
+many requests share prompt prefixes
+-> store prefix KV cache in a radix tree
+-> later requests search matching prefix
+-> reuse matched KV cache
+```
+
+If PagedAttention is mainly about efficient KV block memory management, RadixAttention is mainly about systematic prefix reuse.
+
+They answer different questions:
+
+```text
+PagedAttention:
+How do I store many variable-length KV caches efficiently?
+
+RadixAttention:
+How do I reuse KV cache across requests with shared prefixes?
+```
+
+### Chinese Interview Sentence
+
+```text
+我会把 vLLM 和 SGLang 都看成高性能 LLM serving framework，但侧重点不完全一样。vLLM 更像通用高吞吐 serving engine，核心亮点是 PagedAttention、continuous batching、OpenAI-compatible API、tensor parallel、prefix cache 和 metrics，适合先做通用 serving benchmark。SGLang 也有高性能 runtime 和多 GPU serving，但它更强调结构化生成、程序化 LLM workflow 和 prefix-heavy 场景，核心机制之一是 RadixAttention，通过 radix tree 管理可复用的 KV cache 前缀。简单说，PagedAttention 重点解决 KV cache 怎么高效存，RadixAttention 重点解决共享前缀怎么高效复用。
+```
+
+Sources:
+
+- vLLM documentation: https://docs.vllm.ai/
+- SGLang documentation: https://docs.sglang.ai/
+
 ## Questions To Answer
 
 - How does throughput change as concurrency increases?
