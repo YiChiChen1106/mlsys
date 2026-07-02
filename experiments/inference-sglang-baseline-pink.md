@@ -97,7 +97,21 @@ curl http://127.0.0.1:30000/v1/models
 
 Then run one tiny benchmark through the existing OpenAI-compatible benchmark client by pointing it to SGLang's base URL if the client supports overriding the base URL.
 
-If not, update `benchmark_client.py` to accept a `--base-url` argument before running the SGLang matrix.
+The current `benchmark_client.py` already supports `--endpoint`, so SGLang can be targeted without changing the client:
+
+```bash
+python3 scripts/benchmark_client.py \
+  --endpoint http://127.0.0.1:30000/v1/chat/completions \
+  --model /models/Qwen2.5-7B-Instruct \
+  --prompt-length short \
+  --max-tokens 64 \
+  --warmup-requests 2 \
+  --requests 1 \
+  --timeout-s 180 \
+  --out results/sglang_qwen25_7b_tp1_smoke.csv
+```
+
+After calling `/v1/models`, replace the `--model` value with the served model id if SGLang reports a different name.
 
 ## Phase 2: Minimal Comparable Matrix
 
@@ -162,5 +176,4 @@ Before running, verify:
 
 - whether `lmsysorg/sglang:latest` is already present on `pink`,
 - whether port `30000` is free,
-- whether existing `benchmark_client.py` can set SGLang's base URL,
 - whether SGLang model name returned by `/v1/models` needs to be passed into the benchmark client.
