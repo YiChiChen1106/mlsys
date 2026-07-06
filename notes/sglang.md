@@ -290,6 +290,156 @@ only allow tokens that keep the output valid
 
 This is useful for production systems because broken JSON or invalid tool arguments can break downstream pipelines.
 
+## Structured Outputs And Constrained Decoding, Slightly Deeper
+
+Structured output means the model output must satisfy a formal constraint.
+
+Common constraints:
+
+- JSON schema,
+- regular expression,
+- EBNF grammar,
+- tool-call schema.
+
+Why this matters:
+
+```text
+free-form generation can produce invalid JSON
+invalid JSON can break parsers, tool calls, and downstream systems
+```
+
+Constrained decoding solves this by limiting which tokens are allowed at each decode step.
+
+Beginner mental model:
+
+```text
+normal decoding:
+sample from all likely next tokens
+
+constrained decoding:
+sample only from tokens that keep the output valid
+```
+
+Example:
+
+If the output must be JSON and the model has already generated:
+
+```json
+{"name":
+```
+
+The decoder should not allow arbitrary tokens that would make the JSON invalid. It should guide the next tokens toward a valid JSON string or value.
+
+### How Constraints Are Enforced
+
+The serving engine turns a structure requirement into a decoding guide.
+
+For regex or grammar-like constraints, this is often represented as an automaton or grammar state machine.
+
+At each step:
+
+1. Look at the current constraint state.
+2. Compute which next tokens are allowed.
+3. Mask or bias invalid tokens.
+4. Sample among valid tokens.
+5. Update the constraint state.
+
+This is why structured output belongs in the inference engine, not only in prompt engineering. The engine must interact with the token-level decode loop.
+
+### SGLang Support
+
+SGLang structured output documentation says a request can specify one of:
+
+- `json_schema`,
+- `regex`,
+- `ebnf`.
+
+Only one constraint type should be specified for a request.
+
+SGLang supports multiple grammar backends. The docs list XGrammar as the default backend and also mention Outlines and Llguidance.
+
+The exact backend and supported constraints can change by version, so benchmark notes should record the SGLang version and backend.
+
+### Compressed Finite State Machine
+
+The SGLang paper discusses a compressed finite state machine for faster constrained decoding.
+
+Naive constrained decoding often works one token at a time:
+
+```text
+state -> allowed next tokens -> generate one token -> next state
+```
+
+The compressed FSM idea is to compress deterministic multi-token paths when possible.
+
+Beginner intuition:
+
+```text
+if the constraint already determines a fixed string,
+the engine should not waste full model sampling work for every tiny syntax token
+```
+
+For JSON, many characters are structural:
+
+```text
+{ } [ ] : , "field_name"
+```
+
+Some of these may be predictable from the schema. A smarter decoder can skip or compress parts of this deterministic structure and focus model generation on the fields that actually require semantic content.
+
+### Performance Tradeoff
+
+Structured output has both cost and benefit.
+
+Benefits:
+
+- valid JSON/schema output,
+- fewer retries from broken formatting,
+- safer tool calls,
+- less downstream parsing failure,
+- potential speedups when deterministic structure can be compressed.
+
+Costs:
+
+- grammar compilation,
+- per-token validity checks,
+- token masking or biasing,
+- backend overhead,
+- possible interaction with batching.
+
+So the right question is not:
+
+```text
+Does constrained decoding always make decoding faster?
+```
+
+The better question is:
+
+```text
+For this schema and workload, does fewer invalid output/retry plus grammar optimization outweigh constraint overhead?
+```
+
+### Why It Matters For Inference Framework Roles
+
+Structured output connects directly to decode latency and serving reliability.
+
+For an inference framework engineer, interesting questions include:
+
+- How expensive is grammar compilation?
+- Can compiled grammars be cached?
+- Does constrained decoding hurt batching efficiency?
+- How much time is spent computing allowed token sets?
+- Can deterministic paths be skipped or compressed?
+- How does structured output affect TTFT, TPOT, and p99 latency?
+
+### Chinese Interview Sentence
+
+```text
+SGLang 的 structured output / constrained decoding 不是简单靠 prompt 让模型“尽量输出 JSON”，而是在解码阶段把 JSON schema、regex 或 EBNF 这类约束编译成 grammar/automaton 状态，逐 token 限制可选 token，保证生成过程不违反格式约束。这样可以减少无效 JSON、坏 tool call 和下游解析失败。
+
+SGLang 论文里还提到 compressed finite state machine。我的理解是，普通 constrained decoding 可能每一步都只生成一个 token 并检查约束，而 compressed FSM 会把约束里确定性的多 token 路径压缩起来。比如 JSON 里很多括号、冒号、逗号、字段名是 schema 决定的，不一定都需要完整模型采样。这样 structured output 不只是可靠性功能，也可能影响 decode latency 和吞吐。真正评估时要看 schema 复杂度、grammar backend、batching 影响，以及 TTFT/TPOT/p99 latency 的变化。
+```
+
 ## Runtime Features To Know
 
 SGLang documentation and repository describe features such as:
@@ -386,5 +536,6 @@ SGLang 是一个高性能 LLM serving framework，也可以理解成面向结构
 - SGLang docs: https://docs.sglang.ai/
 - SGLang introduction: https://sgl-project-sglang-93.mintlify.app/introduction
 - SGLang RadixAttention docs: https://sgl-project-sglang-93.mintlify.app/concepts/radix-attention
+- SGLang structured outputs docs: https://docs.sglang.ai/advanced_features/structured_outputs.html
 - SGLang GitHub: https://github.com/sgl-project/sglang
 - SGLang paper: https://arxiv.org/html/2312.07104v2
