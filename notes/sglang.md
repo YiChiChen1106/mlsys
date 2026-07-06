@@ -101,6 +101,160 @@ The important interview point:
 RadixAttention is about automatic KV cache reuse across requests and generation calls with shared prefixes.
 ```
 
+## RadixAttention, Slightly Deeper
+
+RadixAttention maintains a radix tree whose edges represent token sequences and whose nodes point to reusable KV cache.
+
+When a new request arrives, the runtime can:
+
+1. Search the radix tree for the longest cached prefix.
+2. Reuse the KV cache for the matched prefix.
+3. Prefill only the unmatched suffix.
+4. Insert the newly computed suffix back into the tree.
+
+Beginner flow:
+
+```text
+new request tokens
+-> longest prefix match in radix tree
+-> reuse matched prefix KV
+-> compute missing suffix
+-> insert suffix KV into tree
+```
+
+### Example
+
+Suppose the cache already contains:
+
+```text
+"system prompt + tool instruction + summarize"
+```
+
+A new request arrives:
+
+```text
+"system prompt + tool instruction + summarize document B"
+```
+
+The runtime can match:
+
+```text
+"system prompt + tool instruction + summarize"
+```
+
+Then it only needs to prefill:
+
+```text
+"document B"
+```
+
+This reduces repeated prefill work and can lower TTFT.
+
+### Node Split Intuition
+
+If a new sequence partially overlaps an existing cached sequence, the radix tree may split an edge.
+
+Example:
+
+```text
+existing: A B C D
+new:      A B X Y
+```
+
+Shared prefix:
+
+```text
+A B
+```
+
+The tree can split into:
+
+```text
+A B
+├── C D
+└── X Y
+```
+
+This is how the tree represents shared prefixes without storing every full prompt as a separate independent cache entry.
+
+### Eviction Intuition
+
+GPU memory is limited, so prefix cache cannot grow forever.
+
+SGLang's documentation describes cache eviction with an LRU-style policy on leaf nodes and reference counts for running batches.
+
+Beginner interpretation:
+
+- Prefer evicting cache entries that are old and not actively used.
+- Do not evict KV cache that a running request still depends on.
+- Free cache entries when memory is needed for new requests.
+
+This connects prefix cache to cache-system engineering:
+
+```text
+hit rate
+vs
+GPU memory capacity
+vs
+eviction safety
+vs
+scheduler decisions
+```
+
+### Why Cache-Aware Scheduling Matters
+
+If two waiting requests have different prefix-cache opportunities, the scheduler can improve efficiency by considering cache locality.
+
+Example:
+
+```text
+Request A: shares 2,000 cached tokens
+Request B: shares 0 cached tokens
+```
+
+Running A first may produce a much lower prefill cost than treating both requests as equal. This is why RadixAttention is not only a data structure; it can influence scheduling policy.
+
+### When RadixAttention Helps Most
+
+It helps most when traffic has shared prefixes:
+
+- same system prompt,
+- same few-shot examples,
+- same tool instructions,
+- same RAG template,
+- same conversation prefix,
+- branching workflows.
+
+It helps less when every request starts with unrelated random text.
+
+### Cost And Tradeoff
+
+RadixAttention adds runtime bookkeeping:
+
+- prefix tree search,
+- insertion and node splitting,
+- reference counting,
+- eviction management,
+- cache-aware scheduling logic.
+
+The intended tradeoff:
+
+```text
+small management overhead
+in exchange for
+less repeated prefill and better KV reuse
+```
+
+If there are no shared prefixes, the framework should avoid adding too much overhead. The SGLang paper reports low overhead even on workloads with limited sharing, but actual results should still be validated by benchmark.
+
+### Chinese Interview Sentence
+
+```text
+RadixAttention 可以理解成 SGLang 的自动前缀 KV cache 复用机制。它用 radix tree 存 token prefix 和对应的 KV cache。新请求进来时，runtime 先在树里找最长匹配前缀，命中的部分直接复用 KV cache，只对没命中的 suffix 做 prefill，然后把新算出来的 suffix 插回树里。如果新请求和已有缓存只有部分重合，radix tree 会做节点分裂，把共享前缀提出来。显存不够时，需要按类似 LRU 的策略淘汰不活跃的叶子节点，同时用引用计数避免删掉 running batch 还在用的 cache。
+
+所以 RadixAttention 不只是一个 cache 数据结构，它会影响 scheduler：如果某个请求能命中很长前缀，优先调度它可能显著降低 prefill 成本和 TTFT。它最适合 system prompt、tool instruction、RAG template、多轮对话、agent workflow 这类 prefix-heavy workload；如果请求前缀完全随机，收益就会小很多。
+```
+
 ## Cache-Aware Scheduling
 
 If two waiting requests share a cached prefix, running them in a cache-friendly order can improve hit rate.
@@ -231,5 +385,6 @@ SGLang 是一个高性能 LLM serving framework，也可以理解成面向结构
 
 - SGLang docs: https://docs.sglang.ai/
 - SGLang introduction: https://sgl-project-sglang-93.mintlify.app/introduction
+- SGLang RadixAttention docs: https://sgl-project-sglang-93.mintlify.app/concepts/radix-attention
 - SGLang GitHub: https://github.com/sgl-project/sglang
 - SGLang paper: https://arxiv.org/html/2312.07104v2
