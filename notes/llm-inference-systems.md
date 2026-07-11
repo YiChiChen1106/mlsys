@@ -185,6 +185,7 @@ This is not exact, but it is a good mental model for interviews and experiments.
 - Prefix caching: reuses computation for shared prompt prefixes.
 - Tensor parallelism: splits model computation across GPUs.
 - Quantization: reduces memory footprint and sometimes improves throughput.
+- Prefill-decode disaggregation: separates prefill and decode workers so each phase can be scaled and tuned independently.
 
 ## What vLLM Is
 
@@ -381,6 +382,33 @@ Tensor parallel 把同一层模型计算切到多张 GPU 上，可以降低每�
 - Decode generates one token at a time. It mostly shows up in TPOT and output-length scaling.
 - A fixed prompt with output length 16, 64, 128, and 256 should have roughly linear latency growth during decode.
 - A fixed output length with prompt length increasing from about 575 to 1984 prompt tokens should show TTFT growth.
+
+## Prefill-Decode Disaggregation
+
+Prefill and decode stress the system differently:
+
+```text
+prefill = compute-intensive, prompt processing, TTFT
+decode  = KV-cache/memory-intensive, token loop, TPOT/ITL
+```
+
+In a unified engine, the two phases can interfere with each other. A large prefill batch can delay ongoing decode, while many decode requests can make new prefill wait.
+
+PD disaggregation separates them:
+
+```text
+prefill worker -> builds KV cache
+KV cache transfer
+decode worker -> generates output tokens
+```
+
+This enables separate resource scaling and parallelism strategies for prefill and decode. The hard part is efficient KV cache transfer and scheduling.
+
+Chinese interview sentence:
+
+```text
+PD disaggregation 把 prefill 和 decode 拆到不同 worker 或集群。prefill 偏计算密集，主要影响 TTFT；decode 偏 KV cache 和内存访问，主要影响 TPOT/ITL。拆开后可以分别优化资源和并行策略，减少 phase interference。但 prefill worker 生成的 KV cache 必须传给 decode worker，所以 KV transfer、网络带宽、cache placement 和 scheduler 变成关键瓶颈。Mooncake 这类 KVCache-centric 架构就是把 KV cache 的放置、传输、复用作为核心来设计。
+```
 
 ## First Frameworks To Study
 
