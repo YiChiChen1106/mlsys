@@ -186,6 +186,7 @@ This is not exact, but it is a good mental model for interviews and experiments.
 - Tensor parallelism: splits model computation across GPUs.
 - Quantization: reduces memory footprint and sometimes improves throughput.
 - Prefill-decode disaggregation: separates prefill and decode workers so each phase can be scaled and tuned independently.
+- GPU interconnects: PCIe, NVLink, NIC/RDMA, and GPUDirect RDMA determine communication cost for TP, PP, EP, and KV transfer.
 
 ## What vLLM Is
 
@@ -510,6 +511,7 @@ Sources:
 - When does GPU memory, not compute, become the bottleneck?
 - How much does two-GPU tensor parallelism help on 2 x RTX 4090?
 - Which framework behavior can be explained by scheduling or KV cache management?
+- Which communication path is used: PCIe/SYS, NVLink/NVSwitch, or RDMA/GPUDirect RDMA?
 
 ## Current Project
 
