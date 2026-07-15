@@ -1,0 +1,8 @@
+label,metric,value
+tp2_repeated,prefix_cache_hit_ratio,0.9607843137254902
+tp2_repeated,vllm:kv_cache_usage_perc,0.0
+tp2_repeated,vllm:num_preemptions_total,0.0
+tp2_repeated,vllm:num_requests_running,0.0
+tp2_repeated,vllm:num_requests_waiting,0.0
+tp2_repeated,vllm:prefix_cache_hits_total,51744.0
+tp2_repeated,vllm:prefix_cache_queries_total,53856.0

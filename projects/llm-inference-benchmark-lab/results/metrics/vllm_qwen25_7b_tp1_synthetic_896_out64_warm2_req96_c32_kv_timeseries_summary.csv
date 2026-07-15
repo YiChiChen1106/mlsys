@@ -1,0 +1,2 @@
+samples,duration_s,max_kv_cache_usage_perc,max_num_requests_running,max_num_requests_waiting,max_num_requests_waiting_capacity,max_num_requests_waiting_deferred,num_preemptions_delta,prefix_cache_queries_delta,prefix_cache_hits_delta,prefix_cache_hit_ratio
+106,23.150351381860673,0.9705806451612903,32.0,27.0,27.0,0.0,0.0,182172.0,3104.0,0.017038842412664953

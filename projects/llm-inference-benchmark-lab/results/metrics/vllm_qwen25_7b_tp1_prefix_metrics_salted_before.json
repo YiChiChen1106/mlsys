@@ -1,0 +1,12 @@
+{
+  "captured_at_unix_s": 1781765048.6982155,
+  "endpoint": "http://127.0.0.1:8000/metrics",
+  "metrics": {
+    "vllm:kv_cache_usage_perc": 0.0,
+    "vllm:num_preemptions_total": 0.0,
+    "vllm:num_requests_running": 0.0,
+    "vllm:num_requests_waiting": 0.0,
+    "vllm:prefix_cache_hits_total": 122544.0,
+    "vllm:prefix_cache_queries_total": 864358.0
+  }
+}

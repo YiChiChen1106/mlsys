@@ -1,0 +1,16 @@
+{
+  "framework": "vllm",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "gpu_counts": [1, 2],
+  "concurrency": [1, 2, 4, 8, 16],
+  "prompt_lengths": ["short", "medium", "long"],
+  "output_lengths": [64, 256],
+  "metrics": [
+    "ttft_s",
+    "tpot_s",
+    "latency_s",
+    "output_tokens_per_s",
+    "peak_gpu_memory",
+    "failure_rate"
+  ]
+}

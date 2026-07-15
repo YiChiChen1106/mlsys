@@ -1,21 +1,26 @@
 # MLsys Learning Lab
 
-This repository is a learning lab for ML systems, GPU kernels, and inference performance engineering.
+This repository is a public learning lab for ML systems, GPU kernels, and inference performance engineering. It is also an Obsidian vault, so notes and code evolve together.
 
-The current focus is GPU kernel optimization through small, measurable operators. The first project is a GPU MODE style vector sum reduction implemented with PyTorch and Triton.
+The lab currently has two tracks:
+
+- GPU kernel optimization through small, measurable operators.
+- LLM inference systems through serving benchmarks and framework experiments.
 
 ## Current Status
 
-- Main learning thread: GPU kernel optimization
-- First project: vector sum reduction
+- Track 1: GPU kernel optimization
+- Track 2: LLM inference systems
 - Hardware used so far: `pink` with dual RTX 4090
-- Best observed result: `two_stage` reached about `737 GB/s` on the largest benchmark
+- Kernel result so far: `two_stage` vector sum reached about `737 GB/s` on the largest benchmark
+- Inference status: project scaffold created; first target is a vLLM baseline on `pink`
 
 ## Start Here
 
 - [[START_HERE]]
 - [[notes/mlsys-learning-hub]]
 - [[notes/vector-sum-reduction]]
+- [[notes/llm-inference-systems]]
 
 ## What Is In This Repo
 
@@ -29,7 +34,7 @@ templates/    reusable note templates
 
 ## Projects
 
-### GPU MODE Vector Sum
+### Track 1: GPU MODE Vector Sum
 
 Path: `projects/gpu-mode-vector-sum`
 
@@ -48,6 +53,24 @@ N=52,428,800
 torch.sum:  0.2926 ms, 716.84 GB/s
 mixed:      0.2855 ms, 734.65 GB/s
 two_stage:  0.2844 ms, 737.47 GB/s
+```
+
+### Track 2: LLM Inference Benchmark Lab
+
+Path: `projects/llm-inference-benchmark-lab`
+
+Learning path:
+
+1. Run a vLLM OpenAI-compatible server on `pink`.
+2. Measure TTFT, TPOT, throughput, memory, and failure rate.
+3. Sweep concurrency, prompt length, output length, and GPU count.
+4. Repeat with SGLang and llama.cpp.
+5. Explain serving behavior in terms of scheduling, KV cache, and GPU memory pressure.
+
+First target:
+
+```text
+vLLM baseline on 1 x RTX 4090, then 2 x RTX 4090
 ```
 
 ## Environment
@@ -72,10 +95,12 @@ docker start -ai gpumode-vector-sum
 
 ## Why This Exists
 
-The goal is not just to submit kernels. The goal is to build MLsys intuition:
+The goal is not just to submit kernels or run model servers. The goal is to build MLsys intuition:
 
 - what an operator is,
 - how a tensor operation maps to GPU kernels,
 - when a workload is memory-bandwidth-bound,
 - how to benchmark and tune kernels,
+- how LLM serving frameworks trade latency, throughput, and memory,
+- how KV cache and batching shape inference performance,
 - how to explain performance tradeoffs for interviews.
