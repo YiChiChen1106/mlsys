@@ -187,6 +187,7 @@ This is not exact, but it is a good mental model for interviews and experiments.
 - Quantization: reduces memory footprint and sometimes improves throughput.
 - Prefill-decode disaggregation: separates prefill and decode workers so each phase can be scaled and tuned independently.
 - GPU interconnects: PCIe, NVLink, NIC/RDMA, and GPUDirect RDMA determine communication cost for TP, PP, EP, and KV transfer.
+- NCCL collectives: all-reduce, all-gather, reduce-scatter, all-to-all, and P2P are the communication primitives behind TP, PP, EP, and distributed KV transfer.
 
 ## What vLLM Is
 

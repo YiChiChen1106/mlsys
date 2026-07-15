@@ -231,6 +231,217 @@ torch.distributed.init_process_group(backend="nccl")
 
 Then collectives like all-reduce or all-gather often go through NCCL on NVIDIA GPUs.
 
+## NCCL Collectives And PyTorch Distributed
+
+PyTorch distributed is the user-facing distributed API. NCCL is the common backend for NVIDIA GPU communication.
+
+Beginner mental model:
+
+```text
+torch.distributed = API that framework code calls
+NCCL = GPU communication engine underneath
+PCIe/NVLink/RDMA = physical roads NCCL can use
+```
+
+A process group is a group of ranks that communicate together:
+
+```python
+import torch.distributed as dist
+
+dist.init_process_group(backend="nccl")
+rank = dist.get_rank()
+world_size = dist.get_world_size()
+```
+
+In multi-GPU inference, a rank usually maps to one GPU process.
+
+### Collective vs P2P
+
+A collective is an operation where all ranks in a group participate.
+
+Examples:
+
+```text
+all-reduce
+all-gather
+reduce-scatter
+broadcast
+all-to-all
+```
+
+P2P means point-to-point communication:
+
+```text
+send
+recv
+isend
+irecv
+```
+
+Beginner distinction:
+
+```text
+collective:
+everyone in the group participates
+
+P2P:
+one rank sends to another rank
+```
+
+### All-Reduce
+
+All-reduce reduces tensors across ranks, then gives the reduced result back to every rank.
+
+Example:
+
+```text
+GPU0 has partial output A
+GPU1 has partial output B
+
+all-reduce(sum)
+
+GPU0 gets A + B
+GPU1 gets A + B
+```
+
+PyTorch shape:
+
+```python
+dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+```
+
+Inference use:
+
+- tensor parallel layers often compute partial results on each GPU,
+- the final activation may need the sum of those partial results,
+- all-reduce is then on the critical path.
+
+Why it matters:
+
+```text
+TP compute saving
+vs
+all-reduce communication cost
+```
+
+This is one reason TP=2 on `pink` improved throughput but did not reach 2x.
+
+### All-Gather
+
+All-gather collects tensor shards from all ranks and gives the full combined tensor to every rank.
+
+Example:
+
+```text
+GPU0 has shard A
+GPU1 has shard B
+
+all-gather
+
+GPU0 gets [A, B]
+GPU1 gets [A, B]
+```
+
+PyTorch shape:
+
+```python
+dist.all_gather(output_tensor_list, input_tensor)
+```
+
+Inference use:
+
+- gather sharded activations,
+- gather tensor-parallel outputs when later computation needs the full tensor,
+- gather sharded logits or metadata in some implementations.
+
+All-gather is expensive when the gathered tensor is large because every rank ends up holding the full result.
+
+### Reduce-Scatter
+
+Reduce-scatter reduces tensors across ranks, then scatters different output shards to different ranks.
+
+Example:
+
+```text
+GPU0 has [A0, A1]
+GPU1 has [B0, B1]
+
+reduce-scatter(sum)
+
+GPU0 gets A0 + B0
+GPU1 gets A1 + B1
+```
+
+Beginner mental model:
+
+```text
+all-reduce = reduce, then everyone gets the full result
+reduce-scatter = reduce, then each rank keeps only its shard
+```
+
+Inference use:
+
+- useful when the next computation can continue with sharded tensors,
+- can reduce memory traffic compared with all-reduce plus slicing,
+- appears in tensor-parallel and sequence-parallel style designs.
+
+### All-To-All
+
+All-to-all sends different chunks from every rank to every other rank.
+
+Example:
+
+```text
+GPU0 sends token chunks to GPU0/GPU1/GPU2/GPU3
+GPU1 sends token chunks to GPU0/GPU1/GPU2/GPU3
+...
+```
+
+Inference use:
+
+- expert parallel MoE token dispatch,
+- expert output combine,
+- routing tokens to the GPUs that own the selected experts.
+
+All-to-all can be a major bottleneck in MoE inference because token routing creates irregular communication.
+
+### P2P Send/Recv
+
+P2P sends data from one rank to another.
+
+PyTorch shape:
+
+```python
+dist.send(tensor, dst=next_rank)
+dist.recv(tensor, src=prev_rank)
+```
+
+Inference use:
+
+- pipeline parallel stage-to-stage activation transfer,
+- prefill-decode KV cache movement in some designs,
+- custom distributed cache transfer paths.
+
+P2P is not automatically cheaper than collectives. Its cost still depends on message size, topology, overlap, and whether the data path uses PCIe, NVLink, or RDMA.
+
+### Mapping To Inference Parallelism
+
+```text
+Tensor Parallel:
+all-reduce / all-gather / reduce-scatter
+
+Pipeline Parallel:
+P2P send/recv
+
+Expert Parallel:
+all-to-all
+
+Prefill-Decode Disaggregation:
+P2P / RDMA / KV-transfer layer
+```
+
+For decode-heavy inference, these operations are especially important because decode runs one token step at a time. If every decode step triggers communication, communication latency directly affects TPOT.
+
 ## Connecting To PyTorch Distributed Primitives
 
 The job description mentions:
@@ -322,3 +533,4 @@ The better the data path, the more attractive PD disaggregation becomes.
 - NVIDIA NVLink page: https://www.nvidia.com/en-us/data-center/nvlink/
 - NVIDIA NCCL overview: https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/overview.html
 - NVIDIA NCCL GitHub: https://github.com/NVIDIA/nccl
+- PyTorch distributed documentation: https://pytorch.org/docs/stable/distributed.html
